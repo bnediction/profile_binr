@@ -1,6 +1,9 @@
 # IDE files :
 **/.vscode
 
+# R-related files
+**/.R*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

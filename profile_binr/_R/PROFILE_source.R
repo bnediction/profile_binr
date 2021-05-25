@@ -56,7 +56,7 @@ r_dependencies <- c("mclust", "diptest", "moments", "magrittr", "tidyr", "dplyr"
     "tibble", "bigmemory", "doSNOW", "foreach", "glue")
 
 # load dependencies
-..pass <- sapply( r_dependencies, library, character.only = TRUE)
+..pass <- sapply(r_dependencies, library, character.only = TRUE)
 
 tbl_to_df <- function(x, column) {
     #' Cast dplyr::tible to base::data.frame

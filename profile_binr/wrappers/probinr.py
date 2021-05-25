@@ -164,11 +164,10 @@ class ProfileBin(object):
                 "An error ocurred while instantiating the data within the R session",
                 "This is likely due to the type of the objects contained in the DataFrame",
                 "(rpy2 may not have implemented the needed conversion rule).",
-                "\nRRuntimeError message:",
                 "",
                 sep="\n",
             )
-            print(_rer)
+            raise RRuntimeError(str(_rer)) from None
 
     def fit(self, n_threads: Optional[int] = None) -> NoReturn:
         """
@@ -232,10 +231,9 @@ class ProfileBin(object):
                     "\t insufficient RAM",
                     "\t the descriptor files might have been deleted or corrupted",
                     "or another problem related to the R backend.",
-                    "\nRRuntimeError message: \n",
                     sep="\n",
                 )
-                print(_rer)
+                raise RuntimeError(str(_rer)) from None
 
     def _binarize_or_normalize(
         self,

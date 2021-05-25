@@ -1,0 +1,8 @@
+FROM colomoto/colomoto-docker:2021-04-01
+
+USER root
+
+RUN conda install -y anaconda-client conda-build conda-verify
+
+COPY . /src
+RUN conda build -c defaults -c conda-forge -c colomoto /src

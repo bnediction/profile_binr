@@ -1,0 +1,43 @@
+{% set name = "profile_binr" %}
+{% set version = "9999" %}
+
+package:
+  name: '{{ name|lower }}'
+  version: '{{ version }}'
+
+source:
+  path: ../
+
+build:
+  script: python -m pip install --no-deps --ignore-installed .
+  noarch: python
+
+requirements:
+  host:
+    - python
+    - pip
+
+  run:
+    - pandas
+    - python
+    - r-base >= 4.0
+    - r-bigmemory
+    - r-diptest
+    - r-docstring
+    - r-doSNOW
+    - r-dplyr
+    - r-foreach
+    - r-glue
+    - r-magrittr
+    - r-mclust
+    - r-moments
+    - r-tibble
+    - r-tidyr
+    - rpy2
+
+about:
+  home: https://github.com/bnediction/profile_binr
+  summary: PROFILE methodology for the binarisation and normalisation of RNA-seq data
+  license_family: BSD
+  license: BSD-3
+

@@ -17,7 +17,9 @@ Rmarkdown notebooks.
 This software has only been tested in Debian-based GNU/Linux distributions, it should in principle
 work on any *nix system.
 
-### Prerequisites (non-python dependencies)
+### Prerequisites 
+
+#### system dependencies
 
 * R, version 4.0.2 (2020-06-22) -- "Taking Off Again"
 * git (temporarily, to be removed)
@@ -25,6 +27,21 @@ work on any *nix system.
 * g++
 * gfortran
 
+#### R dependencies
+
+* mclust
+* diptest
+* moments
+* magrittr
+* tidyr
+* dplyr
+* tibble
+* bigmemory
+* doSNOW
+* foreach
+* parallel
+* glue
+* docstring
 
 ### Using pip
 

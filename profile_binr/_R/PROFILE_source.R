@@ -281,63 +281,11 @@ compute_criteria <- function(exp_dataset, n_threads, descriptor_filename = NULL)
         tibble::column_to_rownames("Gene")
 }
 
-# TODO : refactor or remove this function (superseded by compute_criteria)
-compute_criteria_sequential <- function(exp_dataset, individual_id) {
-    #' Quasi exact copy of the original compute_criteria
-    #' function, only that the hardcoded 'PATIENT_ID' has
-    #' been replaced by a function argument in
-    #' Here we compute all statistical tools and criteria
-    #' needed to perform the classification of distributions
-    #' in the following categories:
-    #'  discarded,
-    #'  zero-inflated,
-    #'  unimodal,
-    #'  bimodal
-
-    # defuse (quote) individual_id :
-    individual_id <- tryCatch(rlang::enquo(individual_id), error = function(e) e)
-
-    exp_dataset <- exp_dataset %>%
-        select(-{
-            {
-                individual_id
-            }
-        })
-
-    criteria <- tibble(Gene = colnames(exp_dataset), Dip = NA, BI = NA, Kurtosis = NA, 
-        DropOutRate = NA, MeanNZ = NA, DenPeak = NA, Amplitude = NA)
-
-    # Compute
-    pb = txtProgressBar(min = 1, max = ncol(exp_dataset), initial = 1)
-    for (i in 1:ncol(exp_dataset)) {
-        x <- na.omit(unlist(exp_dataset[, i]))
-        criteria$Amplitude[i] <- max(x) - min(x)
-
-        if (criteria$Amplitude[i] != 0) {
-            criteria$Dip[i] <- dip.test(x)$p.value
-            criteria$BI[i] <- BI(x)
-            criteria$Kurtosis[i] <- kurtosis(x) - 3
-            criteria$DropOutRate[i] <- sum(x == 0)/length(x)
-            criteria$MeanNZ[i] <- sum(x)/sum(x != 0)
-            den <- density(x, na.rm = T)
-            criteria$DenPeak[i] <- den$x[which.max(den$y)]
-        }
-
-        setTxtProgressBar(pb, i)
-    }
-
-    threshold <- median(criteria$Amplitude)/10
-    criteria <- criteria %>%
-        mutate(Category = ifelse(Amplitude < threshold | DropOutRate > 0.95, "Discarded", 
-            NA)) %>%
-        mutate(Category = ifelse(is.na(Category) & (BI > 1.5 & Dip < 0.05 & Kurtosis < 
-            1), "Bimodal", Category)) %>%
-        mutate(Category = ifelse(is.na(Category) & DenPeak < threshold, "ZeroInf", 
-            Category)) %>%
-        mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
-
-    return(criteria)
-}
+# compute_criteria_sequential <- function(exp_dataset, individual_id) 
+# removed this function because it was superseded by compute_criteria
+# if you ever want to re-implement it or re-use it, come back to this 
+# commit : 1fab19e7573d9ce00f4db36f42dcefdc408d6a72 
+# on branch main of https://github.com/bnediction/profile_binr/
 
 binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     #' function to apply the proper binarization method depending

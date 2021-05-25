@@ -40,9 +40,7 @@ work on any *nix system.
 * bigmemory
 * doSNOW
 * foreach
-* parallel
 * glue
-* docstring
 
 ### Using pip
 

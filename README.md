@@ -55,7 +55,7 @@ pip install git+https://github.com/bnediction/profile_binr
 
 Once again this is a minimal example :
 ```python
-from profile_binr.wrappers.probinr import ProfileBin
+from profile_binr import ProfileBin
 import pandas as pd
 
 # your data is assumed to contain observations as

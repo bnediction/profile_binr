@@ -22,10 +22,11 @@ work on any *nix system.
 #### system dependencies
 
 * R, version 4.0.2 (2020-06-22) -- "Taking Off Again"
-* git (temporarily, to be removed)
-* make
-* g++
-* gfortran
+    * It could be a newer R version, but this has not been tested.
+* To install R dependencies :
+    * make
+    * g++
+    * gfortran
 
 #### R dependencies
 
@@ -61,20 +62,260 @@ import pandas as pd
 # your data is assumed to contain observations as
 # rows and genes as columns
 data = pd.read_csv("path/to/your/data.csv")
+data.head()
+```
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Clec1b</th>
+      <th>Kdm3a</th>
+      <th>Coro2b</th>
+      <th>8430408G22Rik</th>
+      <th>Clec9a</th>
+      <th>Phf6</th>
+      <th>Usp14</th>
+      <th>Tmem167b</th>
+    </tr>
+    <tr>
+      <th>cell_id</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>HSPC_025</th>
+      <td>0.0</td>
+      <td>4.891604</td>
+      <td>1.426148</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>2.599758</td>
+      <td>2.954035</td>
+      <td>6.357369</td>
+    </tr>
+    <tr>
+      <th>HSPC_031</th>
+      <td>0.0</td>
+      <td>6.877725</td>
+      <td>0.000000</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>2.423483</td>
+      <td>1.804914</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>HSPC_037</th>
+      <td>0.0</td>
+      <td>0.000000</td>
+      <td>6.913384</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>2.051659</td>
+      <td>8.265465</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>LT-HSC_001</th>
+      <td>0.0</td>
+      <td>0.000000</td>
+      <td>8.178374</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>6.419817</td>
+      <td>3.453502</td>
+      <td>2.579528</td>
+    </tr>
+    <tr>
+      <th>HSPC_001</th>
+      <td>0.0</td>
+      <td>0.000000</td>
+      <td>9.475577</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>7.733370</td>
+      <td>1.478900</td>
+      <td>0.000000</td>
+    </tr>
+  </tbody>
+</table>
 
+```python
+# create the binarisation instance using the dataframe
+# with the index containing the cell identifier
+# and the columns being the gene names
 probin = ProfileBin(data)
 
 # compute the criteria used to binarise/normalise the data :
-probin.fit()
+# This method uses a parallel implementation, you can specify the 
+# number of workers with an integer
+probin.fit(8) # train using 8 threads
 
-# get binarised data :
+
+# get binarised data (alternatively .binarise()):
 my_bin = probin.binarize()
-# alternatively :
-# my_bin = probin.binarise()
+my_bin.head()
+```
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Clec1b</th>
+      <th>Kdm3a</th>
+      <th>Coro2b</th>
+      <th>8430408G22Rik</th>
+      <th>Clec9a</th>
+      <th>Phf6</th>
+      <th>Usp14</th>
+      <th>Tmem167b</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>HSPC_025</th>
+      <td>NaN</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <th>HSPC_031</th>
+      <td>NaN</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>HSPC_037</th>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>LT-HSC_001</th>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <th>HSPC_001</th>
+      <td>NaN</td>
+      <td>0.0</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>0.0</td>
+    </tr>
+  </tbody>
+</table>
 
+
+```python
 # idem for normalised data :
 my_norm = probin.normalize()
+my_norm.head()
 ```
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Clec1b</th>
+      <th>Kdm3a</th>
+      <th>Coro2b</th>
+      <th>8430408G22Rik</th>
+      <th>Clec9a</th>
+      <th>Phf6</th>
+      <th>Usp14</th>
+      <th>Tmem167b</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>HSPC_025</th>
+      <td>0.0</td>
+      <td>9.786196e-01</td>
+      <td>0.184102</td>
+      <td>0.0</td>
+      <td>NaN</td>
+      <td>0.000801</td>
+      <td>8.318176e-05</td>
+      <td>9.999970e-01</td>
+    </tr>
+    <tr>
+      <th>HSPC_031</th>
+      <td>0.0</td>
+      <td>9.999981e-01</td>
+      <td>0.000000</td>
+      <td>0.0</td>
+      <td>NaN</td>
+      <td>0.000462</td>
+      <td>8.084114e-07</td>
+      <td>6.874397e-11</td>
+    </tr>
+    <tr>
+      <th>HSPC_037</th>
+      <td>0.0</td>
+      <td>4.408417e-09</td>
+      <td>0.892449</td>
+      <td>0.0</td>
+      <td>NaN</td>
+      <td>0.000145</td>
+      <td>9.999940e-01</td>
+      <td>6.874397e-11</td>
+    </tr>
+    <tr>
+      <th>LT-HSC_001</th>
+      <td>0.0</td>
+      <td>4.408417e-09</td>
+      <td>1.000000</td>
+      <td>0.0</td>
+      <td>NaN</td>
+      <td>0.991865</td>
+      <td>6.230178e-04</td>
+      <td>1.599753e-04</td>
+    </tr>
+    <tr>
+      <th>HSPC_001</th>
+      <td>0.0</td>
+      <td>4.408417e-09</td>
+      <td>1.000000</td>
+      <td>0.0</td>
+      <td>NaN</td>
+      <td>0.999865</td>
+      <td>2.171153e-07</td>
+      <td>6.874397e-11</td>
+    </tr>
+  </tbody>
+</table>
+
 
 ## References 
 

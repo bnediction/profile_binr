@@ -62,7 +62,7 @@ if (!require("pacman")) install.packages("pacman")
 
 # Declare CRAN dependencies :
 r_dependencies <- c("mclust", "diptest", "moments", "magrittr", "tidyr", "dplyr", 
-    "tibble", "bigmemory", "doSNOW", "foreach", "parallel", "glue", "docstring")
+    "tibble", "bigmemory", "doSNOW", "foreach", "glue")
 
 # load dependencies via pacman
 pacman::p_load(r_dependencies, character.only = TRUE)
@@ -220,8 +220,7 @@ criteria_iter <- function(columns, data, genes) {
     criterix
 }
 
-compute_criteria <- function(exp_dataset, n_threads = parallel::detectCores() - 2, 
-    descriptor_filename = NULL) {
+compute_criteria <- function(exp_dataset, n_threads, descriptor_filename = NULL) {
     #' Function used to compute all statistical tools and criteria
     #' needed to perform the classification of distributions
     #' in the following categories:

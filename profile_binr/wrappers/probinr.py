@@ -28,8 +28,8 @@
 
 __all__ = ["ProfileBin"]
 
-# Annotations
 from typing import NoReturn, Any, Callable, List, Dict, Tuple, Optional, Union
+from pathlib import Path
 import logging
 
 import random
@@ -49,7 +49,10 @@ from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 import numpy as np
 import pandas as pd
 
-from ..core.probinr import PROBINR_TXT_LITERAL as _PROBINR_TXT_LITERAL
+# from ..core.probinr import PROBINR_TXT_LITERAL as _PROBINR_TXT_LITERAL
+
+__PROBINR_DIR__ = Path(__file__).parent.absolute().parent.absolute().joinpath("_R")
+__PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").absolute()
 
 rpy2_logger.setLevel(logging.ERROR)  # will display errors, but not warnings
 
@@ -117,7 +120,8 @@ class ProfileBin(object):
         self.__addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
-        self.r(_PROBINR_TXT_LITERAL)
+        with open(__PROBINR_SRC__, "r") as f:
+            self.r("".join(f.readlines()))
 
         # sanitise inputs :
         if not isinstance(data, pd.DataFrame):

@@ -205,8 +205,8 @@ class ProfileBin(object):
         for all genes in the dataset.
 
         """
-        # default to using n-2 cores to avoid saturating the machine :
-        n_threads: int = n_threads or (multiprocessing.cpu_count() - 2)
+        # default to using all available cores
+        n_threads: int = n_threads or multiprocessing.cpu_count()
 
         # the data must be instantiated before performing the R call :
         if not self._data_in_r:

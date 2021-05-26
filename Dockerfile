@@ -16,8 +16,6 @@ RUN conda install -y -c conda-forge \
     r-tibble\
     r-tidyr
 
-    #r-docstring\
-
 COPY . /src
 RUN pip install --no-deps /src
 

@@ -23,7 +23,6 @@ requirements:
     - r-base >=4.0
     - r-bigmemory
     - r-diptest
-    - r-docstring
     - r-doSNOW
     - r-dplyr
     - r-foreach

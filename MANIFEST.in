@@ -1,0 +1,7 @@
+exclude .*
+exclude Dockerfile*
+prune conda
+prune .github
+exclude pyproject.toml
+exclude tidy_source.R
+exclude updater.fish

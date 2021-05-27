@@ -28,6 +28,6 @@ setup(
         "pandas",
         "rpy2",
     ],
-    package_data={'_R': ['_R/*.R']}
+    package_data={'profile_binr': ['_R/*.R']}
 )
 

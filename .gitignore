@@ -1,3 +1,6 @@
+# directory created for tinkering :
+manual_tests
+
 # poetry
 pyproject.toml
 poetry.lock

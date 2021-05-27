@@ -5,7 +5,7 @@ from setuptools import find_packages
 from setuptools import setup
 
 NAME = "profile_binr"
-VERSION = "0.1.0"
+VERSION = "9999"
 
 setup(
     name=NAME,

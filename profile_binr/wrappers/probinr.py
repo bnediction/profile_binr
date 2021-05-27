@@ -131,6 +131,14 @@ class ProfileBin(object):
         else:
             self._data: pd.DataFrame = data
 
+    def __repr__(self):
+        _lines = [
+            f"PROFILE instance at {self.__addr}",
+            f"with R instance at {self.r.__repr__().split(' ')[-1][:-1]}",
+            f"is_trained : {self._is_trained}",
+        ]
+        return "\n".join(_lines)
+
     def r_ls(self):
         """ Return a list containing all the names in the main R environment. """
         return list(self.r("ls()"))

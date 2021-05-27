@@ -14,40 +14,35 @@ Rmarkdown notebooks.
 
 ## Installation
 
-This software has only been tested in Debian-based GNU/Linux distributions, it should in principle
-work on any *nix system.
+### Using conda
 
-### Prerequisites 
+The tool can be installed using the Conda package [profile_binr](https://anaconda.org/colomoto/profile_binr) in the `colomoto` channel. Note that some of its dependencies requires the `conda-forge` channel.
 
-#### system dependencies
-
-* R, version 4.0.2 (2020-06-22) -- "Taking Off Again"
-    * It could be a newer R version, but this has not been tested.
-* To install R dependencies :
-    * make
-    * g++
-    * gfortran
-
-#### R dependencies
-
-* mclust
-* diptest
-* moments
-* magrittr
-* tidyr
-* dplyr
-* tibble
-* bigmemory
-* doSNOW
-* foreach
-* glue
+```
+conda install -c conda-forge colomoto::profile_binr
+```
 
 ### Using pip
 
-This is a barebones functional example. We recommend installing within a Python virtual environment.
+#### Requirements
 
-```bash
-pip install git+https://github.com/bnediction/profile_binr
+* R (≥4.0)
+* R packages:
+    * mclust
+    * diptest
+    * moments
+    * magrittr
+    * tidyr
+    * dplyr
+    * tibble
+    * bigmemory
+    * doSNOW
+    * foreach
+    * glue
+
+
+```
+pip install profile_binr
 ```
 
 ## Usage

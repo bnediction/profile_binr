@@ -1,5 +1,6 @@
-# profile_binr ![](https://enktyy605xyf6r8.m.pipedream.net)
+# profile_binr 
 
+![](https://enktyy605xyf6r8.m.pipedream.net)
 [![Join the chat at https://gitter.im/bnediction/profile_binr](https://badges.gitter.im/bnediction/profile_binr.svg)](https://gitter.im/bnediction/profile_binr?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 The PROFILE methodology for the binarisation and normalisation of RNA-seq data.

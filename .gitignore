@@ -1,4 +1,5 @@
 # poetry
+pyproject.toml
 poetry.lock
 
 # IDE files :

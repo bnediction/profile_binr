@@ -232,16 +232,17 @@ class ProfileBin(object):
                             f"criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
                         )
                     )
-            except RuntimeError as _rer:
-                print(
+            except RRuntimeError as _rer:
+                _err_ls = (
+                    "",
+                    str(_rer),
                     "There was an error while calling compute_criteria() in R",
-                    "This might have been caused by a memory problem i.e. ",
-                    "\t insufficient RAM",
-                    "\t the descriptor files might have been deleted or corrupted",
-                    "or another problem related to the R backend.",
-                    sep="\n",
+                    "Some likely causes are:",
+                    "\t * insufficient RAM",
+                    "\t * the descriptor files might have been deleted or corrupted",
+                    "\t * the data.frame contains non-numerical entries",
                 )
-                raise RuntimeError(str(_rer)) from None
+                raise RRuntimeError("\n".join(_err_ls)) from None
 
     def _binarize_or_normalize(
         self,

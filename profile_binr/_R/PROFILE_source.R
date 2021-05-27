@@ -31,31 +31,11 @@ r_dependencies <- c("mclust", "diptest", "moments", "magrittr", "tidyr", "dplyr"
 # load dependencies
 ..pass <- sapply(r_dependencies, library, character.only = TRUE)
 
-tbl_to_df <- function(x, column) {
-    #' Cast dplyr::tible to base::data.frame
-    x <- x %>%
-        as.data.frame() %>%
-        tibble::remove_rownames() %>%
-        tibble::column_to_rownames(var = column)
-    x
-}
 
 random_words <- function(n = 1, word_length = 5) {
     #' Create n random words of length 'word_length'
     a <- do.call(paste0, replicate(word_length, sample(LETTERS, n, TRUE), FALSE))
     paste0(a, sprintf("%04d", sample(9999, n, TRUE)), sample(LETTERS, n, TRUE))
-}
-
-tbl_transpose <- function(df) {
-    df %>%
-        tibble::rownames_to_column() %>%
-        tidyr::pivot_longer(-rowname) %>%
-        tidyr::pivot_wider(names_from = rowname, values_from = value)
-}
-
-chunks_of_n <- function(x, n) {
-    #' Split a vector x in ~m pieces of size n
-    split(x, ceiling(seq_along(x)/n))
 }
 
 split_in_n <- function(x, n) {

@@ -13,8 +13,7 @@ setup(
     author="Gustavo Magaña López",
     author_email="gustavo.magana-lopez@u-psud.fr",
     url="https://github.com/bnediction/profile_binr",
-    packages=[NAME],
-    # packages=find_packages() <- should we use this ?,
+    packages=find_packages(exclude=("tests",)),
     license="BSD-3",
     classifiers=[
         "Intended Audience :: Science/Research",

@@ -7,6 +7,8 @@ poetry.lock
 
 # IDE files :
 **/.vscode
+**/microsoft*
+**/*.deb
 
 # R-related files
 **/.R*

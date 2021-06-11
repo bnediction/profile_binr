@@ -162,7 +162,12 @@ criteria_iter <- function(columns, data, genes) {
     # added criteria 
         gaussian_mean1 = NA,
         gaussian_mean2 = NA,
-        gaussian_variance = NA
+        gaussian_variance = NA,
+        mean = NA,
+        variance = NA,
+    # I am assuming that zero-inflated genes ~follow
+    # an exponential distribution of parameter lambda
+        lambda = NA
     )
 
     if (criteria.iter$Amplitude != 0) {
@@ -178,9 +183,15 @@ criteria_iter <- function(columns, data, genes) {
       criteria.iter$DenPeak <- den$x[which.max(den$y)]
 
       # add enhanced criteria (used for generation)
+      ## parameters for bimodal genes :
       criteria.iter$gaussian_mean1 <- mc$parameters$mean[1]
       criteria.iter$gaussian_mean2 <- mc$parameters$mean[2]
       criteria.iter$gaussian_variance <- mc$parameters$variance$sigmasq
+      ## parameters for unimodal genes :
+      criteria.iter$mean <- mean(x)
+      criteria.iter$variance <- var(x)
+      ## parameters for zero-inflated genes (exponential?)
+      criteria.iter$lambda <- length(x) / sum(x)
     }
 
     as.data.frame(criteria.iter)

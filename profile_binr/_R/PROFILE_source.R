@@ -159,7 +159,9 @@ criteria_iter <- function(columns, data, genes) {
         Gene = genes[i], Dip = NA, BI = NA, Kurtosis = NA,
         DropOutRate = NA, MeanNZ = NA,
         DenPeak = NA, Amplitude = max(x) - min(x),
-    # added criteria 
+    # added criteria
+        gaussian_prob1 = NA,
+        gaussian_prob2 = NA,
         gaussian_mean1 = NA,
         gaussian_mean2 = NA,
         gaussian_variance = NA,
@@ -184,6 +186,8 @@ criteria_iter <- function(columns, data, genes) {
 
       # add enhanced criteria (used for generation)
       ## parameters for bimodal genes :
+      criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
+      criteria.iter$gaussian_prob2 <- mc$parameters$pro[2]
       criteria.iter$gaussian_mean1 <- mc$parameters$mean[1]
       criteria.iter$gaussian_mean2 <- mc$parameters$mean[2]
       criteria.iter$gaussian_variance <- mc$parameters$variance$sigmasq

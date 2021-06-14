@@ -378,3 +378,9 @@ class ProfileBin(object):
         raise AttributeError(
             "Cannot delete 'criteria' as it is necessary to perform the binarization, aborting."
         )
+
+    def clear_r_envir(self):
+        """Remove an all R objects that have been created by the ProfileBin
+        instance."""
+        _instance_objs = [f"'{obj}'" for obj in self.r_ls() if self.__addr in obj]
+        _ = self.r(f"rm(list = c({', '.join(_instance_objs)}))")

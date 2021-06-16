@@ -167,6 +167,10 @@ criteria_iter <- function(columns, data, genes) {
         gaussian_variance = NA,
         mean = NA,
         variance = NA,
+        q25 = NA,
+        q50 = NA,
+        q75 = NA,
+        IQR = NA,
     # I am assuming that zero-inflated genes ~follow
     # an exponential distribution of parameter lambda
         lambda = NA
@@ -185,6 +189,10 @@ criteria_iter <- function(columns, data, genes) {
       criteria.iter$DenPeak <- den$x[which.max(den$y)]
 
       # add enhanced criteria (used for generation)
+      criteria.iter$q25 <- quantile(x, 0.25)
+      criteria.iter$q50 <- quantile(x, 0.50)
+      criteria.iter$q75 <- quantile(x, 0.75)
+      criteria.iter$IQR <- criteria.iter$q75 - criteria.iter$q25
       ## parameters for bimodal genes :
       criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
       criteria.iter$gaussian_prob2 <- mc$parameters$pro[2]

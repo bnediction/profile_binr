@@ -218,7 +218,7 @@ compute_criteria <- function(exp_dataset, n_threads, descriptor_filename = NULL)
 
   .remove_descriptor <- FALSE
   if (is.null(descriptor_filename)) {
-    descriptor_filename <- glue::glue("{date()} {random_words()}")
+    descriptor_filename <- glue::glue("PROFILE_binarisation backing file {date()} {random_words()}")
     .remove_descriptor <- TRUE
   }
 

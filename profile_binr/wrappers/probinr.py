@@ -49,10 +49,10 @@ from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 import numpy as np
 import pandas as pd
 
-# from ..core.probinr import PROBINR_TXT_LITERAL as _PROBINR_TXT_LITERAL
-
+# R source code locations :
 __PROBINR_DIR__ = Path(__file__).parent.absolute().parent.absolute().joinpath("_R")
 __PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").absolute()
+__PROBINR_BOOTSTRAP__ = __PROBINR_DIR__.joinpath("install_deps.R").absolute()
 
 rpy2_logger.setLevel(logging.ERROR)  # will display errors, but not warnings
 
@@ -120,8 +120,25 @@ class ProfileBin(object):
         self.__addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
-        with open(__PROBINR_SRC__, "r") as f:
-            self.r("".join(f.readlines()))
+        # try loading all packages and functions, installing them upon failure
+        try:
+            with open(__PROBINR_SRC__, "r") as f:
+                self.r("".join(f.readlines()))
+        except RRuntimeError:
+            print("\nERROR : one or more R dependencies are not installed")
+            print("Trying to automatically satisfy missing dependencies\n")
+            try:
+                # install dependencies :
+                with open(__PROBINR_BOOTSTRAP__, "r") as f:
+                    self.r("".join(f.readlines()))
+                print("\n Missing dependencies successfully installed \n")
+                # re-import the R source as functions were not saved because
+                # of the previous RRuntimeError
+                with open(__PROBINR_SRC__, "r") as f:
+                    self.r("".join(f.readlines()))
+            except RRuntimeError as _rer:
+                print("Bootstrapping the installation of R dependencies failed:")
+                raise _rer from None
 
         # sanitise inputs :
         if not isinstance(data, pd.DataFrame):

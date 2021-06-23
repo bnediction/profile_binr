@@ -3,6 +3,7 @@ data
 
 # directory created for tinkering :
 manual_tests
+profile_binr/synthesis/test_simulation.py
 
 # poetry
 pyproject.toml

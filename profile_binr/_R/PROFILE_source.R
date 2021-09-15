@@ -193,6 +193,7 @@ criteria_iter <- function(columns, data, genes) {
       criteria.iter$q50 <- quantile(x, 0.50)
       criteria.iter$q75 <- quantile(x, 0.75)
       criteria.iter$IQR <- criteria.iter$q75 - criteria.iter$q25
+      criteria.iter$zero_inf_thresh <- criteria.iter$IQR + criteria.iter$q75
       ## parameters for bimodal genes :
       criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
       criteria.iter$gaussian_prob2 <- mc$parameters$pro[2]
@@ -203,7 +204,14 @@ criteria_iter <- function(columns, data, genes) {
       criteria.iter$mean <- mean(x)
       criteria.iter$variance <- var(x)
       ## parameters for zero-inflated genes (exponential?)
+      .x.exp <- x[x < criteria.iter$zero_inf_thresh]
+      .x.norm <- x[x >= criteria.iter$zero_inf_thresh]
+      # I am doing the + 1 in order to avoid the indetermination of lambda
+      # when the zero_inf_thresh is zero
       criteria.iter$lambda <- length(x) / sum(x)
+      criteria.iter$local_lambda <- length(.x.exp) / (sum(.x.exp) + 1)
+      criteria.iter$zero_inf_gaussian_mean <- mean(.x.norm)
+      criteria.iter$zero_inf_gaussian_variance <- var(.x.norm)
     }
 
     as.data.frame(criteria.iter)
@@ -316,7 +324,6 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
       gene_bin <- rep(NA, length(x))
     } else if (gene_cat == "Bimodal") {
       gene_bin <- BIMclass(x, x_ref)
-
     } else {
       gene_bin <- OSclass(x, x_ref)
     }

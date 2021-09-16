@@ -194,7 +194,12 @@ class ProfileBin(object):
             )
             raise RRuntimeError(str(_rer)) from None
 
-    def fit(self, n_threads: Optional[int] = None) -> NoReturn:
+    # TODO: verify the function's docstring
+    def fit(
+        self,
+        n_threads: Optional[int] = multiprocessing.cpu_count(),
+        mask_zero_entries: Optional[bool] = False,
+    ) -> NoReturn:
         """
         Compute the criteria needed to decide which binarization rule
         will be applied to each gene. This is performed by calling
@@ -229,8 +234,6 @@ class ProfileBin(object):
         for all genes in the dataset.
 
         """
-        # default to using all available cores
-        n_threads: int = n_threads or multiprocessing.cpu_count()
 
         # the data must be instantiated before performing the R call :
         if not self._data_in_r:
@@ -241,6 +244,7 @@ class ProfileBin(object):
             params = [
                 f"exp_dataset = META_RNA_{self.__addr}",
                 f"n_threads = {n_threads}",
+                f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
             ]
             try:
                 with localconverter(r_objs.default_converter + pandas2ri.converter):

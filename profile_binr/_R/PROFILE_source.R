@@ -141,7 +141,9 @@ norm_fun_bim <- function(xdat, reference = xdat) {
 }
 
 
-criteria_iter <- function(columns, data, genes) {
+criteria_iter <- function(
+  columns, data, genes, mask_zero_entries = FALSE
+) {
   #' Compute criteria for a subset of genes
   #'
   #' Data should be generated calling
@@ -180,13 +182,18 @@ criteria_iter <- function(columns, data, genes) {
       mc <- gaussian_mixture_from_data(x)
 
       # add original criteria
+      criteria.iter$DropOutRate <- sum(x == 0) / length(x)
+      den <- density(x, na.rm = T)
+      criteria.iter$DenPeak <- den$x[which.max(den$y)]
+      ## new approach (better estimation ?)
+      if (mask_zero_entries) {
+        x <- x[x > 0]
+      }
+      # continue adding the original criteria
       criteria.iter$Dip <- diptest::dip.test(x)$p.value
       criteria.iter$BI <- BI(mc)
       criteria.iter$Kurtosis <- moments::kurtosis(x) - 3
-      criteria.iter$DropOutRate <- sum(x == 0) / length(x)
       criteria.iter$MeanNZ <- sum(x) / sum(x != 0)
-      den <- density(x, na.rm = T)
-      criteria.iter$DenPeak <- den$x[which.max(den$y)]
 
       # add enhanced criteria (used for generation)
       criteria.iter$q25 <- quantile(x, 0.25)
@@ -219,7 +226,11 @@ criteria_iter <- function(columns, data, genes) {
   criterix
 }
 
-compute_criteria <- function(exp_dataset, n_threads, descriptor_filename = NULL) {
+compute_criteria <- function(
+  exp_dataset, n_threads,
+  mask_zero_entries = FALSE,
+  descriptor_filename = NULL
+) {
   #' Function used to compute all statistical tools and criteria
   #' needed to perform the classification of distributions
   #' in the following categories:
@@ -263,7 +274,7 @@ compute_criteria <- function(exp_dataset, n_threads, descriptor_filename = NULL)
     require(foreach)
     require(mclust)
     yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
-    criteria_iter(i, yy, genes)
+    criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
   }
 
   stopCluster(cl)

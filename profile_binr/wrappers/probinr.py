@@ -198,6 +198,7 @@ class ProfileBin(object):
     def fit(
         self,
         n_threads: Optional[int] = multiprocessing.cpu_count(),
+        dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = False,
     ) -> NoReturn:
         """
@@ -244,6 +245,7 @@ class ProfileBin(object):
             params = [
                 f"exp_dataset = META_RNA_{self.__addr}",
                 f"n_threads = {n_threads}",
+                f"dor_threshold = {dor_threshold}",
                 f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
             ]
             try:
@@ -369,6 +371,25 @@ class ProfileBin(object):
                   the dataframe to binarize (and the previously computed criteria).
         """
         return self._binarize_or_normalize("normalize", data, gene)
+
+    def plot_zeroinf_diagnostics(
+        self,
+        df_plot_kwargs: Dict[str, Any] = {
+            "kind": "scatter",
+            "x": "DropOutRate",
+            "y": "zero_inf_thresh",
+        },
+    ):
+        """ """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            raise ImportError(
+                "ProfileBin.plot_zeroinf_diagnostics needs matplotlib, please install it and relaunch python"
+            )
+
+        _fig = self.criteria.plot(**df_plot_kwargs)
+        return _fig
 
     @property
     def data(self) -> pd.DataFrame:

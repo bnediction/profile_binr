@@ -228,6 +228,7 @@ criteria_iter <- function(
 
 compute_criteria <- function(
   exp_dataset, n_threads,
+  dor_threshold = 0.95,
   mask_zero_entries = FALSE,
   descriptor_filename = NULL
 ) {
@@ -283,7 +284,7 @@ compute_criteria <- function(
   # Added `tibble` call to enable the use of dplyr operators.
   criteria <- criteria %>%
         dplyr::tibble() %>%
-        dplyr::mutate(Category = ifelse(Amplitude < threshold | DropOutRate > 0.95,
+        dplyr::mutate(Category = ifelse(Amplitude < threshold | DropOutRate > dor_threshold,
             "Discarded", NA)) %>%
         dplyr::mutate(Category = ifelse(is.na(Category) & (BI > 1.5 & Dip < 0.05 &
             Kurtosis < 1), "Bimodal", Category)) %>%

@@ -122,6 +122,7 @@ class ProfileBin(object):
         self.r_globalenv = GLOBALENV
         self._criteria: pd.DataFrame
         self._zero_inf_criteria: pd.DataFrame
+        self._simulation_criteria: pd.DataFrame
         self._zero_inf_idx: pd.core.indexes.base.Index
         self._zero_inf_df: pd.DataFrame
         # try loading all packages and functions, installing them upon failure
@@ -311,6 +312,10 @@ class ProfileBin(object):
             self._zero_inf_criteria.loc[
                 self._zero_inf_criteria.Category == "ZeroInf", "Category"
             ] = "Unimodal"
+            self._simulation_criteria = self._criteria.copy()
+            self._simulation_criteria.loc[
+                self._zero_inf_idx, :
+            ] = self._zero_inf_criteria
         except RRuntimeError as _rer:
             _err_ls = (
                 "",
@@ -468,12 +473,22 @@ class ProfileBin(object):
 
     @property
     def criteria_zero_inf(self) -> pd.DataFrame:
-        """ Computed criteria to simulate synthetic data """
+        """ Recomputed criteria to simulate zero-inf genes """
         if hasattr(self, "_zero_inf_criteria"):
             return self._zero_inf_criteria
         else:
             raise AttributeError(
                 "'criteria_zero_inf' has not been calculated. Call self.simulation_fit() to define it"
+            )
+
+    @property
+    def simulation_criteria(self) -> pd.DataFrame:
+        """ Computed criteria to simulate data """
+        if hasattr(self, "_simulation_criteria"):
+            return self._simulation_criteria
+        else:
+            raise AttributeError(
+                "'simulation_criteria' has not been calculated. Call self.simulation_fit() to define it"
             )
 
     @criteria.deleter

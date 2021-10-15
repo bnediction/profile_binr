@@ -120,6 +120,10 @@ class ProfileBin(object):
         self.__addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
+        self._criteria: pd.DataFrame
+        self._zero_inf_criteria: pd.DataFrame
+        self._zero_inf_idx: pd.core.indexes.base.Index
+        self._zero_inf_df: pd.DataFrame
         # try loading all packages and functions, installing them upon failure
         try:
             with open(__PROBINR_SRC__, "r") as f:
@@ -193,6 +197,7 @@ class ProfileBin(object):
                 sep="\n",
             )
             raise RRuntimeError(str(_rer)) from None
+            # change this to display R's original error ?
 
     # TODO: verify the function's docstring
     def fit(
@@ -250,7 +255,7 @@ class ProfileBin(object):
             ]
             try:
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
-                    self._criteria: pd.DataFrame = r_objs.conversion.rpy2py(
+                    self._criteria = r_objs.conversion.rpy2py(
                         self.r(
                             f"criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
                         )
@@ -266,6 +271,57 @@ class ProfileBin(object):
                     "\t * the data.frame contains non-numerical entries",
                 )
                 raise RRuntimeError("\n".join(_err_ls)) from None
+
+    def simulation_fit(
+        self,
+        n_threads: Optional[int] = multiprocessing.cpu_count(),
+        dor_threshold: Optional[float] = 0.75,
+        mask_zero_entries: Optional[bool] = True,
+    ) -> NoReturn:
+        """Re compute criteria for genes classified as zero-inflated,
+        in order to better estimate simulation parameters."""
+        if not self._is_trained:
+            raise ValueError(
+                "\n".join(
+                    [
+                        "Cannot compute simulation fit because self.criteria does not exist.",
+                        "Call self.fit() before calling this method.",
+                    ]
+                )
+            )
+
+        self._zero_inf_idx = self._criteria[self._criteria.Category == "ZeroInf"].index
+        self._zero_inf_df = self._data.loc[:, self._zero_inf_idx]
+        self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self.__addr}")
+
+        params = [
+            f"exp_dataset = zero_inf_RNA_{self.__addr}",
+            f"n_threads = {n_threads}",
+            f"dor_threshold = {dor_threshold}",
+            f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+        ]
+        try:
+            with localconverter(r_objs.default_converter + pandas2ri.converter):
+                self._zero_inf_criteria = r_objs.conversion.rpy2py(
+                    self.r(
+                        f"zero_inf_criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+                    )
+                )
+
+            self._zero_inf_criteria.loc[
+                self._zero_inf_criteria.Category == "ZeroInf", "Category"
+            ] = "Unimodal"
+        except RRuntimeError as _rer:
+            _err_ls = (
+                "",
+                str(_rer),
+                "There was an error while calling compute_criteria() in R",
+                "Some likely causes are:",
+                "\t * insufficient RAM",
+                "\t * the descriptor files might have been deleted or corrupted",
+                "\t * the data.frame contains non-numerical entries",
+            )
+            raise RRuntimeError("\n".join(_err_ls)) from None
 
     def _binarize_or_normalize(
         self,
@@ -380,14 +436,9 @@ class ProfileBin(object):
             "y": "zero_inf_thresh",
         },
     ):
-        """ """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            raise ImportError(
-                "ProfileBin.plot_zeroinf_diagnostics needs matplotlib, please install it and relaunch python"
-            )
-
+        """Plot the ZeroInflated threshold as a function of the dropout rate
+        in order to visualise the DropOutRate's value to use as new discarding
+        threshold."""
         _fig = self.criteria.plot(**df_plot_kwargs)
         return _fig
 
@@ -413,6 +464,16 @@ class ProfileBin(object):
         else:
             raise AttributeError(
                 "'criteria' has not been calculated. Call self.fit() to define it"
+            )
+
+    @property
+    def criteria_zero_inf(self) -> pd.DataFrame:
+        """ Computed criteria to simulate synthetic data """
+        if hasattr(self, "_zero_inf_criteria"):
+            return self._zero_inf_criteria
+        else:
+            raise AttributeError(
+                "'criteria_zero_inf' has not been calculated. Call self.simulation_fit() to define it"
             )
 
     @criteria.deleter

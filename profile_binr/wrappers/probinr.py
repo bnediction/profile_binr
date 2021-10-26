@@ -276,7 +276,7 @@ class ProfileBin(object):
     def simulation_fit(
         self,
         n_threads: Optional[int] = multiprocessing.cpu_count(),
-        dor_threshold: Optional[float] = 0.75,
+        dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = True,
     ) -> NoReturn:
         """Re compute criteria for genes classified as zero-inflated,
@@ -309,10 +309,13 @@ class ProfileBin(object):
                     )
                 )
 
+            # force ZeroInf genes to be simulated as Unimodal
             self._zero_inf_criteria.loc[
                 self._zero_inf_criteria.Category == "ZeroInf", "Category"
             ] = "Unimodal"
+            # Copy the originally estimated criteria
             self._simulation_criteria = self._criteria.copy()
+            # Update the criteria for ZeroInf genes
             self._simulation_criteria.loc[
                 self._zero_inf_idx, :
             ] = self._zero_inf_criteria

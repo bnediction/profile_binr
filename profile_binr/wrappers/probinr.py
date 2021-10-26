@@ -476,20 +476,18 @@ class ProfileBin(object):
         """ Recomputed criteria to simulate zero-inf genes """
         if hasattr(self, "_zero_inf_criteria"):
             return self._zero_inf_criteria
-        else:
-            raise AttributeError(
-                "'criteria_zero_inf' has not been calculated. Call self.simulation_fit() to define it"
-            )
+        raise AttributeError(
+            "'criteria_zero_inf' has not been calculated. Call self.simulation_fit() to define it"
+        )
 
     @property
     def simulation_criteria(self) -> pd.DataFrame:
         """ Computed criteria to simulate data """
         if hasattr(self, "_simulation_criteria"):
             return self._simulation_criteria
-        else:
-            raise AttributeError(
-                "'simulation_criteria' has not been calculated. Call self.simulation_fit() to define it"
-            )
+        raise AttributeError(
+            "'simulation_criteria' has not been calculated. Call self.simulation_fit() to define it"
+        )
 
     @criteria.deleter
     def criteria(self):

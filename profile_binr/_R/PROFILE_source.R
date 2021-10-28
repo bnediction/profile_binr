@@ -68,6 +68,8 @@ BI <- function(mc) {
   b_i
 }
 
+# TODO : use the learned parameters instead of 
+# recalculating the quantiles each time the function is called.
 OSclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   #' Function to binarise the tails of the distribution
   #' Based on inter-quartile range (IQR)
@@ -172,10 +174,10 @@ criteria_iter <- function(
         q25 = NA,
         q50 = NA,
         q75 = NA,
-        IQR = NA,
+        IQR = NA
     # I am assuming that zero-inflated genes ~follow
     # an exponential distribution of parameter lambda
-        lambda = NA
+    #    lambda = NA
     )
 
     if (criteria.iter$Amplitude != 0) {
@@ -211,14 +213,14 @@ criteria_iter <- function(
       criteria.iter$mean <- mean(x)
       criteria.iter$variance <- var(x)
       ## parameters for zero-inflated genes (exponential?)
-      .x.exp <- x[x < criteria.iter$zero_inf_thresh]
-      .x.norm <- x[x >= criteria.iter$zero_inf_thresh]
-      # I am doing the + 1 in order to avoid the indetermination of lambda
-      # when the zero_inf_thresh is zero
-      criteria.iter$lambda <- length(x) / sum(x)
-      criteria.iter$local_lambda <- length(.x.exp) / (sum(.x.exp) + 1)
-      criteria.iter$zero_inf_gaussian_mean <- mean(.x.norm)
-      criteria.iter$zero_inf_gaussian_variance <- var(.x.norm)
+      # .x.exp <- x[x < criteria.iter$zero_inf_thresh]
+      # .x.norm <- x[x >= criteria.iter$zero_inf_thresh]
+      # # I am doing the + 1 in order to avoid the indetermination of lambda
+      # # when the zero_inf_thresh is zero
+      # criteria.iter$lambda <- length(x) / sum(x)
+      # criteria.iter$local_lambda <- length(.x.exp) / (sum(.x.exp) + 1)
+      # criteria.iter$zero_inf_gaussian_mean <- mean(.x.norm)
+      # criteria.iter$zero_inf_gaussian_variance <- var(.x.norm)
     }
 
     as.data.frame(criteria.iter)

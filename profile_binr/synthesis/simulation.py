@@ -1,5 +1,5 @@
 """
-
+Module to simulate genes from learnt criteria
 """
 import functools
 import multiprocessing
@@ -8,7 +8,7 @@ import scipy.stats as ss
 import numpy as np
 import pandas as pd
 
-from typing import Dict, Tuple, Callable, List
+from typing import Tuple, Callable, List
 
 
 def _sim_zero_inf(_lambda: float, size: int) -> np.ndarray:
@@ -136,7 +136,7 @@ def simulate_from_criteria(
     )
 
     _df_splitted_ls: List[pd.DataFrame] = np.array_split(criteria, n_workers)
-    with multiprocessing.Pool(n_workers) as p:
-        ret_list = p.map(_partial_simulation_function, _df_splitted_ls)
+    with multiprocessing.Pool(n_workers) as pool:
+        ret_list = pool.map(_partial_simulation_function, _df_splitted_ls)
 
     return pd.concat(ret_list, axis=1)

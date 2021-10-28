@@ -4,18 +4,23 @@ Module to simulate genes from learnt criteria
 import functools
 import multiprocessing
 
+from typing import Tuple, Callable, List
+
 import scipy.stats as ss
 import numpy as np
 import pandas as pd
 
-from typing import Tuple, Callable, List
 
-
-def _sim_zero_inf(_lambda: float, size: int) -> np.ndarray:
-    """Simulate zero-inflated genes
+def __sim_zero_inf(
+    _lambda: float, size: int, ignore_deprecation: bool = False
+) -> np.ndarray:
+    """DEPRECATED . Simulate zero-inflated genes
     This function samples from an exponential distribution with parameter
     lambda
     """
+    if not ignore_deprecation:
+        __err_message = ["Error: ", "ZeroInf genes cannot be directly simulated"]
+        raise DeprecationWarning("".join(__err_message))
     return np.random.exponential(scale=1 / _lambda, size=size)
 
 
@@ -101,7 +106,7 @@ def simulate_gene(
                 dropout_rate=criterium["DropOutRate"], size=n_samples
             )
     elif criterium["Category"] == "ZeroInf":
-        _data = _sim_zero_inf(_lambda=criterium["lambda"], size=n_samples)
+        _data = __sim_zero_inf(_lambda=criterium["lambda"], size=n_samples)
     else:
         raise ValueError(f"Unknown category `{criterium['Category']}`, aborting")
 

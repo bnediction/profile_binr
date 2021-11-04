@@ -115,6 +115,23 @@ class ProfileBin(object):
             random.choice(string.ascii_lowercase + string.digits) for i in range(n)
         )
 
+    @staticmethod
+    def _build_r_error_hint(error_str: str) -> str:
+        """Build an auxiliary error string, associated to common causes
+        of RRuntimeErrors."""
+        _err_ls = (
+            "",
+            f"{str(error_str)}\n",
+            "There was an error while calling compute_criteria() in R",
+            "If the error is cryptic (as R errors generally are),"
+            "some likely causes might be:",
+            "\t * insufficient RAM",
+            "\t * the descriptor files might have been deleted or corrupted",
+            "\t * the data.frame contains non-numerical entries",
+            "\t * the data.frame is empty",
+        )
+        return "\n".join(_err_ls)
+
     def __init__(self, data: pd.DataFrame):
         # self.__addr will be used to keep track of R objects related to the instance :
         self.__addr: str = str(hex(id(self)))
@@ -262,20 +279,10 @@ class ProfileBin(object):
                         )
                     )
             except RRuntimeError as _rer:
-                _err_ls = (
-                    "",
-                    str(_rer),
-                    "There was an error while calling compute_criteria() in R",
-                    "Some likely causes are:",
-                    "\t * insufficient RAM",
-                    "\t * the descriptor files might have been deleted or corrupted",
-                    "\t * the data.frame contains non-numerical entries",
-                    "\t * the data.frame is empty",
-                )
                 # If there an Exception was raised on the R-side, it is very likely
                 # that the parallel cluster was not stopped, so we have to do it manually:
                 _ = self.r("snow::stopCluster(parallel_cluster)")
-                raise RRuntimeError("\n".join(_err_ls)) from None
+                raise RRuntimeError(self._build_r_error_hint(_rer)) from None
 
     def simulation_fit(
         self,
@@ -326,20 +333,10 @@ class ProfileBin(object):
                     self._zero_inf_idx, :
                 ] = self._zero_inf_criteria
             except RRuntimeError as _rer:
-                _err_ls = (
-                    "",
-                    str(_rer),
-                    "There was an error while calling compute_criteria() in R",
-                    "Some likely causes are:",
-                    "\t * insufficient RAM",
-                    "\t * the descriptor files might have been deleted or corrupted",
-                    "\t * the data.frame contains non-numerical entries",
-                    "\t * the data.frame is empty",
-                )
                 # If there an Exception was raised on the R-side, it is very likely
                 # that the parallel cluster was not stopped, so we have to do it manually:
                 _ = self.r("snow::stopCluster(parallel_cluster)")
-                raise RRuntimeError("\n".join(_err_ls)) from None
+                raise RRuntimeError(self._build_r_error_hint(_rer)) from None
         else:
             # Copy the originally estimated criteria
             self._simulation_criteria = self._criteria.copy()

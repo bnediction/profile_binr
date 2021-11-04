@@ -292,44 +292,49 @@ class ProfileBin(object):
             )
 
         self._zero_inf_idx = self._criteria[self._criteria.Category == "ZeroInf"].index
-        self._zero_inf_df = self._data.loc[:, self._zero_inf_idx]
-        self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self.__addr}")
+        # Perform simulation_fit iff there is at least one Zero-Inflated gene.
+        if len(self._zero_inf_idx) > 0:
+            self._zero_inf_df = self._data.loc[:, self._zero_inf_idx]
+            self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self.__addr}")
 
-        params = [
-            f"exp_dataset = zero_inf_RNA_{self.__addr}",
-            f"n_threads = {n_threads}",
-            f"dor_threshold = {dor_threshold}",
-            f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
-        ]
-        try:
-            with localconverter(r_objs.default_converter + pandas2ri.converter):
-                self._zero_inf_criteria = r_objs.conversion.rpy2py(
-                    self.r(
-                        f"zero_inf_criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+            params = [
+                f"exp_dataset = zero_inf_RNA_{self.__addr}",
+                f"n_threads = {n_threads}",
+                f"dor_threshold = {dor_threshold}",
+                f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+            ]
+            try:
+                with localconverter(r_objs.default_converter + pandas2ri.converter):
+                    self._zero_inf_criteria = r_objs.conversion.rpy2py(
+                        self.r(
+                            f"zero_inf_criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+                        )
                     )
-                )
 
-            # force ZeroInf genes to be simulated as Unimodal
-            self._zero_inf_criteria.loc[
-                self._zero_inf_criteria.Category == "ZeroInf", "Category"
-            ] = "Unimodal"
+                # force ZeroInf genes to be simulated as Unimodal
+                self._zero_inf_criteria.loc[
+                    self._zero_inf_criteria.Category == "ZeroInf", "Category"
+                ] = "Unimodal"
+                # Copy the originally estimated criteria
+                self._simulation_criteria = self._criteria.copy()
+                # Update the criteria for ZeroInf genes
+                self._simulation_criteria.loc[
+                    self._zero_inf_idx, :
+                ] = self._zero_inf_criteria
+            except RRuntimeError as _rer:
+                _err_ls = (
+                    "",
+                    str(_rer),
+                    "There was an error while calling compute_criteria() in R",
+                    "Some likely causes are:",
+                    "\t * insufficient RAM",
+                    "\t * the descriptor files might have been deleted or corrupted",
+                    "\t * the data.frame contains non-numerical entries",
+                )
+                raise RRuntimeError("\n".join(_err_ls)) from None
+        else:
             # Copy the originally estimated criteria
             self._simulation_criteria = self._criteria.copy()
-            # Update the criteria for ZeroInf genes
-            self._simulation_criteria.loc[
-                self._zero_inf_idx, :
-            ] = self._zero_inf_criteria
-        except RRuntimeError as _rer:
-            _err_ls = (
-                "",
-                str(_rer),
-                "There was an error while calling compute_criteria() in R",
-                "Some likely causes are:",
-                "\t * insufficient RAM",
-                "\t * the descriptor files might have been deleted or corrupted",
-                "\t * the data.frame contains non-numerical entries",
-            )
-            raise RRuntimeError("\n".join(_err_ls)) from None
 
     def _binarize_or_normalize(
         self,

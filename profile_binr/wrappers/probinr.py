@@ -270,7 +270,11 @@ class ProfileBin(object):
                     "\t * insufficient RAM",
                     "\t * the descriptor files might have been deleted or corrupted",
                     "\t * the data.frame contains non-numerical entries",
+                    "\t * the data.frame is empty",
                 )
+                # If there an Exception was raised on the R-side, it is very likely
+                # that the parallel cluster was not stopped, so we have to do it manually:
+                _ = self.r("snow::stopCluster(parallel_cluster)")
                 raise RRuntimeError("\n".join(_err_ls)) from None
 
     def simulation_fit(
@@ -330,7 +334,11 @@ class ProfileBin(object):
                     "\t * insufficient RAM",
                     "\t * the descriptor files might have been deleted or corrupted",
                     "\t * the data.frame contains non-numerical entries",
+                    "\t * the data.frame is empty",
                 )
+                # If there an Exception was raised on the R-side, it is very likely
+                # that the parallel cluster was not stopped, so we have to do it manually:
+                _ = self.r("snow::stopCluster(parallel_cluster)")
                 raise RRuntimeError("\n".join(_err_ls)) from None
         else:
             # Copy the originally estimated criteria

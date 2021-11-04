@@ -260,8 +260,10 @@ compute_criteria <- function(
         colnames()
   n_genes <- length(genes)
 
-  cl <- snow::makeSOCKcluster(names = rep("localhost", n_threads))
-  doSNOW::registerDoSNOW(cl)
+  # Use `<<-` assignment operator to make the cluster available 
+  # outside the function closure 
+  parallel_cluster <<- snow::makeSOCKcluster(names = rep("localhost", n_threads))
+  doSNOW::registerDoSNOW(parallel_cluster)
 
   big_exp_dataset <- exp_dataset %>%
         dplyr::select(-individual_id) %>%
@@ -280,7 +282,7 @@ compute_criteria <- function(
     criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
   }
 
-  stopCluster(cl)
+  snow::stopCluster(parallel_cluster)
 
   threshold <- median(criteria$Amplitude) / 10
   # Added `tibble` call to enable the use of dplyr operators.

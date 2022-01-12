@@ -260,29 +260,29 @@ compute_criteria <- function(
         colnames()
   n_genes <- length(genes)
 
-  # Use `<<-` assignment operator to make the cluster available 
-  # outside the function closure 
-  parallel_cluster <<- snow::makeSOCKcluster(names = rep("localhost", n_threads))
-  doSNOW::registerDoSNOW(parallel_cluster)
 
-  big_exp_dataset <- exp_dataset %>%
-        dplyr::select(-individual_id) %>%
-        as.data.frame %>%
-        bigmemory::as.big.matrix(type = "double", separated = FALSE, backingfile = backing_file,
-            descriptorfile = descriptor_file)
+  tryCatch({
+    parallel_cluster <- snow::makeSOCKcluster(names = rep("localhost", n_threads))
+    doSNOW::registerDoSNOW(parallel_cluster)
+    big_exp_dataset <- exp_dataset %>%
+            dplyr::select(-individual_id) %>%
+            as.data.frame %>%
+            bigmemory::as.big.matrix(type = "double", separated = FALSE, backingfile = backing_file,
+                descriptorfile = descriptor_file)
 
-  big_exp_descriptor <- bigmemory::describe(big_exp_dataset)
-  gene_iterator <- split_in_n(1:ncol(big_exp_dataset), n_threads)
+    big_exp_descriptor <- bigmemory::describe(big_exp_dataset)
+    gene_iterator <- split_in_n(1:ncol(big_exp_dataset), n_threads)
 
-  criteria <- foreach::foreach(i = gene_iterator, .combine = rbind, .inorder = TRUE,
-        .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")) %dopar% {
-    require(foreach)
-    require(mclust)
-    yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
-    criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
-  }
+    criteria <- foreach::foreach(i = gene_iterator, .combine = rbind, .inorder = TRUE,
+            .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")) %dopar% {
+      require(foreach)
+      require(mclust)
+      yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
+      criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
+    }
+  }, finally = snow::stopCluster(parallel_cluster)
+  )
 
-  snow::stopCluster(parallel_cluster)
 
   threshold <- median(criteria$Amplitude) / 10
   # Added `tibble` call to enable the use of dplyr operators.

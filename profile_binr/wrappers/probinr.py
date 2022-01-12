@@ -281,7 +281,7 @@ class ProfileBin(object):
             except RRuntimeError as _rer:
                 # If there an Exception was raised on the R-side, it is very likely
                 # that the parallel cluster was not stopped, so we have to do it manually:
-                _ = self.r("snow::stopCluster(parallel_cluster)")
+                # _ = self.r("snow::stopCluster(parallel_cluster)")
                 raise RRuntimeError(self._build_r_error_hint(_rer)) from None
 
     def simulation_fit(

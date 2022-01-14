@@ -47,7 +47,9 @@ def simulate_unimodal_distribution(
     return _rv_rhs if np.isclose(value, 1.0) else _rv_lhs
 
 
-def simulate_unimodal_gene(binary_gene: pd.Series, criterion: pd.Series) -> pd.Series:
+def simulate_unimodal_gene(
+    binary_gene: pd.Series, criterion: pd.Series, _verbose: bool = False
+) -> pd.Series:
     """
     R
     """
@@ -64,12 +66,13 @@ def simulate_unimodal_gene(binary_gene: pd.Series, criterion: pd.Series) -> pd.S
     assert sum(one_mask) + sum(zero_mask) == len(
         binary_gene
     ), "Floating point comparison error."
-    print(
-        f"Lengths\n\tOnes({sum(one_mask)}) + Zeros({sum(zero_mask)}) = ArrayLength({len(binary_gene)}) *"
-    )
-    print(
-        f"Proportions\n\tOnes({sum(one_mask)/len(binary_gene)}) + Zeros({sum(zero_mask)/len(binary_gene)})"
-    )
+    if _verbose:
+        print(
+            f"Lengths\n\tOnes({sum(one_mask)}) + Zeros({sum(zero_mask)}) = ArrayLength({len(binary_gene)}) *"
+        )
+        print(
+            f"Proportions\n\tOnes({sum(one_mask)/len(binary_gene)}) + Zeros({sum(zero_mask)/len(binary_gene)})"
+        )
 
     simulated_from_ones = simulate_unimodal_distribution(
         1.0,
@@ -96,9 +99,11 @@ def simulate_unimodal_gene(binary_gene: pd.Series, criterion: pd.Series) -> pd.S
     simulated_normalised_expression[zero_mask] = simulated_from_zeros
 
     # Correct by randomly putting values smaller than the bin threshold to zero :
-    print(f"natural DropOutRate = {natural_dor}")
+    if _verbose:
+        print(f"natural DropOutRate = {natural_dor}")
     if natural_dor < criterion["DropOutRate"]:
-        print("Correcting DropOutRate...", end="\t")
+        if _verbose:
+            print("Correcting DropOutRate...", end="\t")
         # check how many values do we need to put to zero
         _correction_dor = criterion["DropOutRate"] - natural_dor
         # candidates to be set to zero :  (this might need a correction
@@ -114,8 +119,9 @@ def simulate_unimodal_gene(binary_gene: pd.Series, criterion: pd.Series) -> pd.S
             size=sum(_correction_mask),  # change to _correction_mask.sum() ?
         )
         corrected_dor = np.isclose(simulated_normalised_expression, 0).mean()
-        print("Done")
-        print(f"Corrected DropOutRate : {corrected_dor}")
+        if _verbose:
+            print("Done")
+            print(f"Corrected DropOutRate : {corrected_dor}")
     # This still seems to fall short...
     # I think the best approach is to randomly put zeros below the zero-inf binarisation threshold
     # Maybe discuss a less naive approach to setting zeros and ones ?

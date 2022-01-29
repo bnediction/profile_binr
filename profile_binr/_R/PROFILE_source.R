@@ -87,6 +87,7 @@ OSclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   return(classif)
 }
 
+# TODO : save mc parameters to perform the binarisation on the Python side.
 BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   #' Function to to binarise bimodal distributions
   #' based on a 2-modes gaussian mixture model (with equal variances).
@@ -280,7 +281,13 @@ compute_criteria <- function(
       yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
       criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
     }
-  }, finally = snow::stopCluster(parallel_cluster)
+  }, finally = {
+    snow::stopCluster(parallel_cluster)
+    if (.remove_descriptor) {
+      unlink(backing_file)
+      unlink(descriptor_file)
+    }
+  }
   )
 
 
@@ -295,11 +302,6 @@ compute_criteria <- function(
         dplyr::mutate(Category = ifelse(is.na(Category) & DenPeak < threshold, "ZeroInf",
             Category)) %>%
         dplyr::mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
-
-  if (.remove_descriptor) {
-    unlink(backing_file)
-    unlink(descriptor_file)
-  }
 
   criteria %>%
         tibble::column_to_rownames("Gene")

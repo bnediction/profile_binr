@@ -26,6 +26,15 @@ def random_nan_binariser(df):
     return df
 
 
+# def mean_binariser(binary_df, normalized_counts_df):
+#    df = copy.deepcopy(binary_df)
+#    for gene in df.columns:
+#        mask = df[gene].isna()
+#        df.loc[mask, gene] = np.random.choice((1.0, 0, 0), mask.sum())
+#
+#    return df
+
+
 def simulate_unimodal_distribution(
     value: float, mean: float, std_dev: float, size: int
 ) -> pd.Series:
@@ -59,7 +68,7 @@ def simulate_bimodal_gene(
     # binary_gene = fully_bin.loc[:, _unimod_gene]
     # allocate array for simulated data
     simulated_normalised_expression = pd.Series(
-        0.0, index=binary_gene.index, name=criterion.name, dtype=float
+        np.nan, index=binary_gene.index, name=criterion.name, dtype=float
     )
     # Create masks
     # (1 - np.array([True, False, False])).astype(bool)
@@ -105,18 +114,11 @@ def simulate_bimodal_gene(
             print("Correcting DropOutRate...", end="\t")
         # check how many values do we need to put to zero
         _correction_dor = criterion["DropOutRate"] - natural_dor
-        # candidates to be set to zero :  (this might need a correction
-        #                                  because nothing excludes a zero being reset to zero)
-        _correction_mask = (
-            simulated_normalised_expression
-            < criterion[["gaussian_mean1", "gaussian_mean2"]].mean()
-        )
+
         # calculate a correction mask (vector of 1 and 0 at random indices, according to the correction DOR)
-        # _dor_mask_len = min(len(_correction_mask), np.floor(_correction_dor*len(binary_gene)).astype(int))
-        # simulated_normalised_expression[_correction_mask] *= _dropout_mask(dropout_rate=_correction_dor, size=_dor_mask_len)
-        simulated_normalised_expression[_correction_mask] *= _dropout_mask(
+        simulated_normalised_expression *= _dropout_mask(
             dropout_rate=_correction_dor,
-            size=sum(_correction_mask),  # change to _correction_mask.sum() ?
+            size=len(simulated_normalised_expression),
         )
         corrected_dor = np.isclose(simulated_normalised_expression, 0).mean()
         if _verbose:
@@ -186,32 +188,16 @@ def simulate_unimodal_gene(
             print("Correcting DropOutRate...", end="\t")
         # check how many values do we need to put to zero
         _correction_dor = criterion["DropOutRate"] - natural_dor
-        # candidates to be set to zero :  (this might need a correction
-        #                                 because nothing excludes a zero being reset to zero)
-        # TODO : remove this arbitrary boundary for technical zeros
-        _correction_mask = (
-            simulated_normalised_expression < criterion["zero_inf_thresh"]
-        )
+
         # calculate a correction mask (vector of 1 and 0 at random indices, according to the correction DOR)
-        # _dor_mask_len = min(len(_correction_mask), np.floor(_correction_dor*len(binary_gene)).astype(int))
-        # simulated_normalised_expression[_correction_mask] *= _dropout_mask(dropout_rate=_correction_dor, size=_dor_mask_len)
-        simulated_normalised_expression[_correction_mask] *= _dropout_mask(
-            dropout_rate=_correction_dor,
-            size=sum(_correction_mask),  # change to _correction_mask.sum() ?
+        simulated_normalised_expression *= _dropout_mask(
+            dropout_rate=_correction_dor, size=len(simulated_normalised_expression)
         )
         corrected_dor = np.isclose(simulated_normalised_expression, 0).mean()
         if _verbose:
             print("Done")
             print(f"Corrected DropOutRate : {corrected_dor}")
-    # This still seems to fall short...
-    # I think the best approach is to randomly put zeros below the zero-inf binarisation threshold
-    # Maybe discuss a less naive approach to setting zeros and ones ?
-    # perhaps a probability of being set to zero proportional to the distance to the
-    # binarisation threshold
-    # I think that this random assignation is responsible for the discrepancies
-    # observed between the two histograms. We have an over-aboundance of ones.
-    # Maybe this is not a problem as we want to generate new data and there is no
-    # a priori on these percentages
+
     return simulated_normalised_expression
 
 

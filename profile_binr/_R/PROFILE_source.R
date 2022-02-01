@@ -145,7 +145,7 @@ norm_fun_bim <- function(xdat, reference = xdat) {
 
 
 criteria_iter <- function(
-  columns, data, genes, mask_zero_entries = FALSE
+  columns, data, genes, mask_zero_entries = FALSE, unimodal_margin_quantile = 0.25
 ) {
   #' Compute criteria for a subset of genes
   #'
@@ -172,13 +172,13 @@ criteria_iter <- function(
         gaussian_variance = NA,
         mean = NA,
         variance = NA,
-        q25 = NA,
+        unimodal_margin_quantile = NA,
+        unimodal_low_quantile = NA,
+        unimodal_high_quantile = NA,
+        IQR = NA,
         q50 = NA,
-        q75 = NA,
-        IQR = NA
-    # I am assuming that zero-inflated genes ~follow
-    # an exponential distribution of parameter lambda
-    #    lambda = NA
+        bim_thresh_down = NA,
+        bim_thresh_up = NA
     )
 
     if (criteria.iter$Amplitude != 0) {
@@ -199,29 +199,29 @@ criteria_iter <- function(
       criteria.iter$MeanNZ <- sum(x) / sum(x != 0)
 
       # add enhanced criteria (used for generation)
-      criteria.iter$q25 <- quantile(x, 0.25)
+      criteria.iter$unimodal_margin_quantile <- unimodal_margin_quantile
+      criteria.iter$unimodal_low_quantile <- quantile(x, unimodal_margin_quantile)
+      criteria.iter$unimodal_high_quantile <- quantile(x, 1.0 - unimodal_margin_quantile)
+      criteria.iter$IQR <- IQR(x)
       criteria.iter$q50 <- quantile(x, 0.50)
-      criteria.iter$q75 <- quantile(x, 0.75)
-      criteria.iter$IQR <- criteria.iter$q75 - criteria.iter$q25
-      criteria.iter$zero_inf_thresh <- criteria.iter$IQR + criteria.iter$q75
+      #criteria.iter$zero_inf_thresh <- criteria.iter$IQR + criteria.iter$q75
       ## parameters for bimodal genes :
       criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
       criteria.iter$gaussian_prob2 <- mc$parameters$pro[2]
       criteria.iter$gaussian_mean1 <- mc$parameters$mean[1]
       criteria.iter$gaussian_mean2 <- mc$parameters$mean[2]
       criteria.iter$gaussian_variance <- mc$parameters$variance$sigmasq
+      # save parameters for python-side binarisation
+      .delta <- as.integer(diff(mc$parameters$mean) > 0)
+      .alpha <- 1
+      .beta <- 2
+      .down <- as.integer(.delta * .alpha + (1 - .delta) * .beta)
+      .up <- as.integer((1 - .delta) * .alpha + .delta * .beta)
+      criteria.iter$bim_thresh_down <- max(mc$data[mc$classification == .down & mc$uncertainty <= 0.05])
+      criteria.iter$bim_thresh_up <- min(mc$data[mc$classification == .up & mc$uncertainty <= 0.05])
       ## parameters for unimodal genes :
       criteria.iter$mean <- mean(x)
       criteria.iter$variance <- var(x)
-      ## parameters for zero-inflated genes (exponential?)
-      # .x.exp <- x[x < criteria.iter$zero_inf_thresh]
-      # .x.norm <- x[x >= criteria.iter$zero_inf_thresh]
-      # # I am doing the + 1 in order to avoid the indetermination of lambda
-      # # when the zero_inf_thresh is zero
-      # criteria.iter$lambda <- length(x) / sum(x)
-      # criteria.iter$local_lambda <- length(.x.exp) / (sum(.x.exp) + 1)
-      # criteria.iter$zero_inf_gaussian_mean <- mean(.x.norm)
-      # criteria.iter$zero_inf_gaussian_variance <- var(.x.norm)
     }
 
     as.data.frame(criteria.iter)
@@ -233,8 +233,9 @@ compute_criteria <- function(
   exp_dataset, n_threads,
   dor_threshold = 0.95,
   mask_zero_entries = FALSE,
+  unimodal_margin_quantile = 0.25,
   descriptor_filename = NULL
-) {
+  ) {
   #' Function used to compute all statistical tools and criteria
   #' needed to perform the classification of distributions
   #' in the following categories:
@@ -249,7 +250,8 @@ compute_criteria <- function(
 
   .remove_descriptor <- FALSE
   if (is.null(descriptor_filename)) {
-    descriptor_filename <- glue::glue("PROFILE_binarisation backing file {date()} {random_words()}")
+    descriptor_filename <-
+      glue::glue("PROFILE_binarisation backing file {date()} {random_words()}")
     .remove_descriptor <- TRUE
   }
 
@@ -263,23 +265,33 @@ compute_criteria <- function(
 
 
   tryCatch({
-    parallel_cluster <- snow::makeSOCKcluster(names = rep("localhost", n_threads))
+    parallel_cluster <-
+      snow::makeSOCKcluster(names = rep("localhost", n_threads))
     doSNOW::registerDoSNOW(parallel_cluster)
     big_exp_dataset <- exp_dataset %>%
             dplyr::select(-individual_id) %>%
             as.data.frame %>%
-            bigmemory::as.big.matrix(type = "double", separated = FALSE, backingfile = backing_file,
-                descriptorfile = descriptor_file)
+            bigmemory::as.big.matrix(
+              type = "double", separated = FALSE,
+              backingfile = backing_file,
+              descriptorfile = descriptor_file
+            )
 
     big_exp_descriptor <- bigmemory::describe(big_exp_dataset)
     gene_iterator <- split_in_n(1:ncol(big_exp_dataset), n_threads)
 
-    criteria <- foreach::foreach(i = gene_iterator, .combine = rbind, .inorder = TRUE,
-            .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")) %dopar% {
+    criteria <- foreach::foreach(
+      i = gene_iterator, .combine = rbind, .inorder = TRUE,
+      .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")
+    ) %dopar% {
       require(foreach)
       require(mclust)
       yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
-      criteria_iter(i, yy, genes, mask_zero_entries = mask_zero_entries)
+      criteria_iter(
+        i, yy, genes,
+        mask_zero_entries = mask_zero_entries,
+        unimodal_margin_quantile = unimodal_margin_quantile
+      )
     }
   }, finally = {
     snow::stopCluster(parallel_cluster)
@@ -295,22 +307,29 @@ compute_criteria <- function(
   # Added `tibble` call to enable the use of dplyr operators.
   criteria <- criteria %>%
         dplyr::tibble() %>%
-        dplyr::mutate(Category = ifelse(Amplitude < threshold | DropOutRate > dor_threshold,
-            "Discarded", NA)) %>%
-        dplyr::mutate(Category = ifelse(is.na(Category) & (BI > 1.5 & Dip < 0.05 &
-            Kurtosis < 1), "Bimodal", Category)) %>%
-        dplyr::mutate(Category = ifelse(is.na(Category) & DenPeak < threshold, "ZeroInf",
-            Category)) %>%
+        dplyr::mutate(Category = ifelse(
+          Amplitude < threshold | DropOutRate > dor_threshold,
+          "Discarded", NA)
+        ) %>%
+        dplyr::mutate(Category = ifelse(
+          is.na(Category) &
+          (BI > 1.5 & Dip < 0.05 & Kurtosis < 1),
+          "Bimodal", Category)
+        ) %>%
+        dplyr::mutate(Category = ifelse(
+          is.na(Category) & DenPeak < threshold,
+          "ZeroInf", Category)
+        ) %>%
         dplyr::mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
 
   criteria %>%
         tibble::column_to_rownames("Gene")
 }
 
-# compute_criteria_sequential <- function(exp_dataset, individual_id) 
+# compute_criteria_sequential <- function(exp_dataset, individual_id)
 # removed this function because it was superseded by compute_criteria
-# if you ever want to re-implement it or re-use it, come back to this 
-# commit : 1fab19e7573d9ce00f4db36f42dcefdc408d6a72 
+# if you ever want to re-implement it or re-use it, come back to this
+# commit : 1fab19e7573d9ce00f4db36f42dcefdc408d6a72
 # on branch main of https://github.com/bnediction/profile_binr/
 
 binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {

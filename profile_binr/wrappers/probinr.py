@@ -137,11 +137,19 @@ class ProfileBin(object):
         self.__addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
+        self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
         self._criteria: pd.DataFrame
         self._zero_inf_criteria: pd.DataFrame
         self._simulation_criteria: pd.DataFrame
         self._zero_inf_idx: pd.core.indexes.base.Index
         self._zero_inf_df: pd.DataFrame
+        self._binary_func_by_category = {
+            "ZeroInf": self._binarize_unimodal_and_zeroinf,
+            "Unimodal": self._binarize_unimodal_and_zeroinf,
+            "Bimodal": self._binarize_bimodal,
+            "Discarded": self._binarize_discarded,
+        }
+
         # try loading all packages and functions, installing them upon failure
         try:
             with open(__PROBINR_SRC__, "r") as f:
@@ -223,6 +231,7 @@ class ProfileBin(object):
         n_threads: Optional[int] = multiprocessing.cpu_count(),
         dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = False,
+        unimodal_margin_quantile: Optional[float] = 0.25,
     ) -> NoReturn:
         """
         Compute the criteria needed to decide which binarization rule
@@ -241,7 +250,7 @@ class ProfileBin(object):
         for each gene will be stored within the class.
 
         It is accessible via :
-        >>> probin_instance.criteria
+        >>> self.criteria
 
         criteria's columns are :
             Dip, BI, Kurtosis, DropOutRate, MeanNZ, DenPeak, Amplitude, Category
@@ -270,6 +279,7 @@ class ProfileBin(object):
                 f"n_threads = {n_threads}",
                 f"dor_threshold = {dor_threshold}",
                 f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+                f"unimodal_margin_quantile = {unimodal_margin_quantile}",
             ]
             try:
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
@@ -279,9 +289,6 @@ class ProfileBin(object):
                         )
                     )
             except RRuntimeError as _rer:
-                # If there an Exception was raised on the R-side, it is very likely
-                # that the parallel cluster was not stopped, so we have to do it manually:
-                # _ = self.r("snow::stopCluster(parallel_cluster)")
                 raise RRuntimeError(self._build_r_error_hint(_rer)) from None
 
     def simulation_fit(
@@ -289,6 +296,7 @@ class ProfileBin(object):
         n_threads: Optional[int] = multiprocessing.cpu_count(),
         dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = True,
+        unimodal_margin_quantile: Optional[float] = 0.25,
     ) -> NoReturn:
         """Re compute criteria for genes classified as zero-inflated,
         in order to better estimate simulation parameters."""
@@ -313,6 +321,7 @@ class ProfileBin(object):
                 f"n_threads = {n_threads}",
                 f"dor_threshold = {dor_threshold}",
                 f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+                f"unimodal_margin_quantile = {unimodal_margin_quantile}",
             ]
             try:
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
@@ -333,9 +342,6 @@ class ProfileBin(object):
                     self._zero_inf_idx, :
                 ] = self._zero_inf_criteria
             except RRuntimeError as _rer:
-                # If there an Exception was raised on the R-side, it is very likely
-                # that the parallel cluster was not stopped, so we have to do it manually:
-                _ = self.r("snow::stopCluster(parallel_cluster)")
                 raise RRuntimeError(self._build_r_error_hint(_rer)) from None
         else:
             # Copy the originally estimated criteria
@@ -407,6 +413,105 @@ class ProfileBin(object):
         finally:
             if _rm_df:
                 _ = self.r(f"rm({_df_name})")
+
+    def py_binarize(
+        self,
+        data: Optional[pd.DataFrame] = None,
+        alpha: Optional[float] = 1.0,
+        n_threads: Optional[int] = None,
+    ):
+        """ """
+        if not self._is_trained:
+            raise AttributeError(
+                f"Cannot binarize without the criteria DataFrame. Call self.fit() first."
+            )
+
+        data = data or self.data.copy(deep=True)
+
+        n_threads = n_threads or multiprocessing.cpu_count()
+        # verify binarised genes are contained in the simulation criteria index
+        if not all(gene in self.criteria.index for gene in data.columns):
+            raise ValueError(
+                "'data' contains genes for which there is no simulation criterion."
+            )
+
+        # The following check may be unnecessary as we are using self.criteria,
+        # which by construction can only yield valid criteria.
+        # What if the user tampered with the criteria ?
+        if not all(
+            category in self._valid_categories for category in self.criteria.Category
+        ):
+            raise ValueError(
+                "\n".join(
+                    [
+                        "Corrupted criteria DataFrame,",
+                        f"The set of categories : {self.criteria.Category.unique()}"
+                        "is not a subset of",
+                        f"the set of valid categories : {self._valid_categories}",
+                    ]
+                )
+            )
+
+        # match the order
+        # simulation_criteria = self.criteria.loc[data.columns, :]
+        # binary_df = pd.DataFrame(np.nan, index=data.index, columns=data.columns)
+
+        # genes_by_category = {
+        #    category: self.criteria[self.criteria.Category == category].index
+        #    for category in self.criteria.Category.unique()
+        # }
+        # self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
+
+        # if "Discarded" in genes_by_category:
+        #    _ = genes_by_category.pop("Discarded")
+
+        # for gene in binary_df.columns:
+        #    binary_df.loc[:, gene] = binary_df.loc[:, gene].apply(
+        #        binary_func_by_category[self.criteria.loc[gene, "Category"]]
+        #    )
+
+        # _criteria_ls = np.array_split(self.criteria, n_threads)
+        _binary_ls = np.array_split(data, n_threads, axis=1)
+        with multiprocessing.Pool(n_threads) as pool:
+            # args = ((_bin, _crit) for _bin, _crit in zip(_binary_ls, _criteria_ls))
+            ret_list = pool.map(self._binarize_subset, _binary_ls)
+
+        return pd.concat(ret_list, axis=1)
+
+    def _binarize_discarded(self, gene: pd.Series):
+        """ """
+        return pd.Series(np.nan, index=gene.index)
+
+    def _binarize_bimodal(self, gene: pd.Series):
+        """ """
+        _binary_gene = pd.Series(np.nan, index=gene.index)
+        _criterion = self.criteria.loc[gene.name, :]
+        bim_thresh_up = _criterion["bim_thresh_up"]
+        bim_thresh_down = _criterion["bim_thresh_down"]
+        _binary_gene[gene >= bim_thresh_up] = 1.0
+        _binary_gene[gene <= bim_thresh_down] = 0.0
+        return _binary_gene
+
+    # TODO : add the alpha parameter for the Tukey Fences
+    def _binarize_unimodal_and_zeroinf(self, gene: pd.Series):
+        """ """
+        _binary_gene = pd.Series(np.nan, index=gene.index)
+        _criterion = self.criteria.loc[gene.name, :]
+        unim_thresh_up = _criterion["unimodal_high_quantile"] + _criterion["IQR"]
+        unim_thresh_down = _criterion["unimodal_low_quantile"] - _criterion["IQR"]
+        _binary_gene[gene > unim_thresh_up] = 1.0
+        _binary_gene[gene < unim_thresh_down] = 0.0
+        return _binary_gene
+
+    def _binarize_gene(self, gene: pd.Series):
+        """ """
+        return self._binary_func_by_category[self.criteria.loc[gene.name, "Category"]](
+            gene
+        )
+
+    def _binarize_subset(self, data: pd.DataFrame):
+        """ """
+        return data.apply(self._binarize_gene)
 
     def binarize(
         self, data: Optional[pd.DataFrame] = None, gene: Optional[str] = None

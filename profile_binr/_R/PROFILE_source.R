@@ -110,8 +110,8 @@ BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
 
 norm_fun_lin <- function(xdat, reference = xdat) {
   #' Function for normalisation of zero-inflated data
-  x_proc <- (xdat - quantile(reference, 0.01, na.rm = T)) / quantile(xdat - quantile(reference,
-        0.01, na.rm = T), 0.99, na.rm = T)
+  x_proc <- (xdat - quantile(reference, 0.01, na.rm = T)) /
+   quantile(xdat - quantile(reference,0.01, na.rm = T), 0.99, na.rm = T)
   x_proc[x_proc < 0] <- 0
   x_proc[x_proc > 1] <- 1
   x_proc

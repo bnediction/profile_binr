@@ -6,6 +6,10 @@ import argparse
 import multiprocessing as mp
 from .wrappers.probinr import ProfileBin
 
+__ACTIONS = [
+    "binarize",
+    "simulate",
+]
 __HELP_MESSAGES = {
     "main": """Process a """,
     "in_file": """A csv file containing a column for each gene and a line for each observation.
@@ -13,9 +17,17 @@ __HELP_MESSAGES = {
     "config_file": """A TOML configuration file, containing all the parameters here described.
         If specified, the contents of THE CONFIG FILE WILL OVERRIDE ALL THE OTHER PARAMETERS
         PASSED VIA THE COMMAND LINE.""",
-    "n_cores": "The number of threads for parallel execution (bounded by available cores)",
+    "n_threads": "The number of threads for parallel execution (bounded by available cores)",
     "mask_zeros": "Should zero entries be masked when computing the criteria ?",
+    "action": f"One of the following: {__ACTIONS}",
 }
+
+__DEFAULT_VALUES = {
+    "action": "binarize",
+    "n_threads": mp.cpu_count(),
+    "mask_zeros": True,
+}
+
 
 # TODO : remove this class
 class DictNamespace:
@@ -83,6 +95,14 @@ def main():
             prog="rna2bool", description=__HELP_MESSAGES["main"]
         )
         parser.add_argument(
+            "-a",
+            "--action",
+            type=str,
+            dest="action",
+            help=__HELP_MESSAGES["action"],
+            default=__DEFAULT_VALUES["action"],
+        )
+        parser.add_argument(
             "-f",
             "--expression_file",
             type=argparse.FileType("r"),
@@ -95,14 +115,17 @@ def main():
             help=__HELP_MESSAGES["config_file"],
         )
         parser.add_argument(
-            "--n_cores",
+            "--n_threads",
             type=int,
-            default=mp.cpu_count(),
-            dest="n_cores",
-            help=__HELP_MESSAGES["n_cores"],
+            default=__DEFAULT_VALUES["n_threads"],
+            dest="n_threads",
+            help=__HELP_MESSAGES["n_threads"],
         )
         parser.add_argument(
-            "--mask_zeros", type=bool, default=True, help=__HELP_MESSAGES["mask_zeros"]
+            "--mask_zeros",
+            type=bool,
+            default=__DEFAULT_VALUES["mask_zeros"],
+            help=__HELP_MESSAGES["mask_zeros"],
         )
         # parser.add_argument(
         #    "--pandas_kw",
@@ -112,7 +135,7 @@ def main():
         #    metavar="KEY=VAL",
         # )
 
-        args = DictNamespace(parser.parse_args())
+        args = parser.parse_args()
         if not any((args.in_file, args.config_file)):
             parser.print_help()
             raise SystemExit() from None
@@ -120,26 +143,24 @@ def main():
         if args.config_file:
             _config = toml.load(args.config_file)
 
-            if not set(args.keys()) == set(_config.keys()):
-                raise KeyError(
-                    " ".join(
-                        [
-                            f"Config file {args.config_file.name} does not have all necessary parameters:",
-                            f"{list(args.keys())}",
-                        ]
-                    )
-                ) from None
+            # check config file integrity
+            if not set(_config.keys()).issubset(set(args.__dict__.keys())):
+                extra_args = set(_config.keys()).difference(set(args.__dict__.keys()))
+                print(
+                    f"config file {args.config_file.name} contains unknown params {extra_args}",
+                    "Aborting",
+                    sep="\n",
+                )
+                parser.print_help()
+                raise SystemExit() from None
+            # override all other params
+            args.__dict__.update(_config)
 
-            for param_name in _config:
-                if param_name != "config_file":
-                    _new_param_value = _config.get(param_name)
-                    if _new_param_value is None:
-                        pass
-                    args[param_name] = _new_param_value
-
-        args.n_cores = min(abs(args.n_cores), mp.cpu_count())
+        args.n_threads = min(abs(args.n_threads), mp.cpu_count())
     except (argparse.ArgumentError, ValueError) as _arg_err:
-        raise _arg_err from ValueError("no me la creo")
+        parser.print_help()
+        print(_arg_err)
+        raise SystemExit() from None
     # END ARG PARSING
 
     # CLI LOGIC

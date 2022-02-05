@@ -132,6 +132,10 @@ class ProfileBin(object):
         )
         return "\n".join(_err_ls)
 
+    # TODO : add seeding mechanism
+    # https://numpy.org/doc/stable/reference/random/parallel.html
+    # https://numpy.org/doc/stable/reference/random/multithreading.html
+    # https://numpy.org/devdocs/reference/random/index.html
     def __init__(self, data: pd.DataFrame):
         # self.__addr will be used to keep track of R objects related to the instance :
         self.__addr: str = str(hex(id(self)))
@@ -152,8 +156,8 @@ class ProfileBin(object):
 
         # try loading all packages and functions, installing them upon failure
         try:
-            with open(__PROBINR_SRC__, "r") as f:
-                self.r("".join(f.readlines()))
+            with open(__PROBINR_SRC__, "r") as _probin_source:
+                self.r("".join(_probin_source.readlines()))
         except RRuntimeError:
             print("\nERROR : one or more R dependencies are not installed")
             print("Trying to automatically satisfy missing dependencies\n")
@@ -179,12 +183,9 @@ class ProfileBin(object):
             self._data: pd.DataFrame = data
 
     def __repr__(self):
-        _lines = [
-            f"PROFILE instance at {self.__addr}",
-            f"with R instance at {self.r.__repr__().split(' ')[-1][:-1]}",
-            f"is_trained : {self._is_trained}",
-        ]
-        return "\n".join(_lines)
+        return (
+            f"ProfileBin(trained={self._is_trained}, can_simulate={self._can_simulate})"
+        )
 
     def r_ls(self):
         """ Return a list containing all the names in the main R environment. """
@@ -192,8 +193,13 @@ class ProfileBin(object):
 
     @property
     def _is_trained(self) -> bool:
-        """ Determine if the criteria has been calculated by inspecting the R environment. """
-        return f"criteria_{self.__addr}" in self.r_ls()
+        """ Boolean indicating if the instance can be used to binarize expression."""
+        return hasattr(self, "_criteria")
+
+    @property
+    def _can_simulate(self) -> bool:
+        """ Boolean indicating if the instance can be used to simulate expression."""
+        return hasattr(self, "_simulation_criteria")
 
     @property
     def _data_in_r(self) -> bool:
@@ -232,7 +238,7 @@ class ProfileBin(object):
         dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = False,
         unimodal_margin_quantile: Optional[float] = 0.25,
-    ) -> NoReturn:
+    ) -> "ProfileBin":
         """
         Compute the criteria needed to decide which binarization rule
         will be applied to each gene. This is performed by calling
@@ -291,13 +297,15 @@ class ProfileBin(object):
             except RRuntimeError as _rer:
                 raise RRuntimeError(self._build_r_error_hint(_rer)) from None
 
+        return self
+
     def simulation_fit(
         self,
         n_threads: Optional[int] = multiprocessing.cpu_count(),
         dor_threshold: Optional[float] = 0.95,
         mask_zero_entries: Optional[bool] = True,
         unimodal_margin_quantile: Optional[float] = 0.25,
-    ) -> NoReturn:
+    ) -> "ProfileBin":
         """Re compute criteria for genes classified as zero-inflated,
         in order to better estimate simulation parameters."""
         if not self._is_trained:
@@ -346,6 +354,8 @@ class ProfileBin(object):
         else:
             # Copy the originally estimated criteria
             self._simulation_criteria = self._criteria.copy()
+
+        return self
 
     def _binarize_or_normalize(
         self,

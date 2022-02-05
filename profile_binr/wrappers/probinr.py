@@ -21,14 +21,14 @@
     Rmarkdown notebooks : https://github.com/sysbio-curie/PROFILE
 
     Python wrappers and parallel implementation of the
-    R function compute_criteria() written by Gustavo Magaña López. 
+    R function compute_criteria() written by Gustavo Magaña López.
     GitHub profile : https://github.com/gmagannaDevelop
              email : gustavo.magana-lopez@u-psud.fr
 """
 
 __all__ = ["ProfileBin"]
 
-from typing import NoReturn, Any, Callable, List, Dict, Tuple, Optional, Union
+from typing import NoReturn, Any, Dict, Optional, Union
 from pathlib import Path
 import logging
 
@@ -48,6 +48,9 @@ from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 # data management
 import numpy as np
 import pandas as pd
+
+# local imports
+from ..synthesis.simulation import biased_simulation_from_binary_state
 
 # R source code locations :
 __PROBINR_DIR__ = Path(__file__).parent.absolute().parent.absolute().joinpath("_R")
@@ -433,7 +436,7 @@ class ProfileBin(object):
         """ """
         if not self._is_trained:
             raise AttributeError(
-                f"Cannot binarize without the criteria DataFrame. Call self.fit() first."
+                "Cannot binarize without the criteria DataFrame. Call self.fit() first."
             )
 
         data = data or self.data.copy(deep=True)
@@ -560,6 +563,18 @@ class ProfileBin(object):
                   the dataframe to binarize (and the previously computed criteria).
         """
         return self._binarize_or_normalize("normalize", data, gene)
+
+    def simulate(self, binary_df, n_threads: Optional[int] = None):
+        """ wrapper for profile_binr.synthesis.simulation.biased_simulation_from_binary_state"""
+        if not self._can_simulate:
+            raise AttributeError("Call .simulation_fit() first")
+        if n_threads:
+            n_threads = min(n_threads, multiprocessing.cpu_count())
+        else:
+            n_threads = multiprocessing.cpu_count()
+        return biased_simulation_from_binary_state(
+            binary_df, self.simulation_criteria, n_threads=n_threads
+        )
 
     def plot_zeroinf_diagnostics(
         self,

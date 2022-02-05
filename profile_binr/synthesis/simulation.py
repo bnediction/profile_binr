@@ -2,12 +2,11 @@
 """
 
 import copy
+import multiprocessing as mp
+from typing import Optional
 
 # TODO : change import scheme
 from .sampling import _dropout_mask, pd, np, ss
-
-import multiprocessing as mp
-from typing import Optional
 
 # TODO : give this a better names ?
 def random_nan_binariser(df):
@@ -248,7 +247,10 @@ def biased_simulation_from_binary_state(
     n_threads: Optional[int] = None,
 ) -> pd.DataFrame:
     """ n_threads defaults to multiprocessing.cpu_count()"""
-    n_threads = n_threads or mp.cpu_count()
+    if n_threads:
+        n_threads = min(n_threads, mp.cpu_count())
+    else:
+        n_threads = mp.cpu_count()
     # verify binarised genes are contained in the simulation criteria index
     if not all(x in simulation_criteria.index for x in binary_df.columns):
         raise ValueError(

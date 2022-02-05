@@ -25,8 +25,12 @@
 #'
 
 # Declare CRAN dependencies :
-r_dependencies <- c("mclust", "diptest", "moments", "magrittr", "tidyr", "dplyr",
-    "tibble", "bigmemory", "doSNOW", "foreach", "glue")
+r_dependencies <- c(
+  "mclust", "diptest", "moments", # Used for statistic calculation
+  "magrittr", "tidyr", "dplyr", "tibble", # Used for data formatting + the pipe
+  "bigmemory", "doSNOW", "foreach", # Used to improve parallel performance
+  "glue" # Easy string interpolation in R
+)
 
 # load dependencies
 ..pass <- sapply(r_dependencies, library, character.only = TRUE)
@@ -52,7 +56,7 @@ gaussian_mixture_from_data <- function(dataset) {
 
 BI <- function(mc) {
   #' BI : Bimodality Index
-  #' Estimate 
+  #' Estimate
   #' Function to compute the Bimodality Index described in Wang et al. (2009)
   #' x <- dataset
   #' mc <- mclust::Mclust(na.omit(x), G = 2, modelNames = "E", verbose = FALSE)
@@ -68,7 +72,8 @@ BI <- function(mc) {
   b_i
 }
 
-# TODO : use the learned parameters instead of 
+# v-> DONE ! (On the Python side)
+# TODO : use the learned parameters instead of
 # recalculating the quantiles each time the function is called.
 OSclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   #' Function to binarise the tails of the distribution
@@ -92,7 +97,10 @@ BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   #' Function to to binarise bimodal distributions
   #' based on a 2-modes gaussian mixture model (with equal variances).
   #' Can be called with a reference dataset
-  mc <- mclust::Mclust(na.omit(ref_dataset), modelNames = "E", G = 2, verbose = FALSE)
+  mc <- mclust::Mclust(
+    na.omit(ref_dataset), modelNames = "E",
+    G = 2, verbose = FALSE
+  )
   classif <- rep(NA, length(exp_dataset))
   if (diff(mc$parameters$mean) > 0) {
     thresh_down <- max(mc$data[mc$classification == 1 & mc$uncertainty <= 0.05])
@@ -111,7 +119,7 @@ BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
 norm_fun_lin <- function(xdat, reference = xdat) {
   #' Function for normalisation of zero-inflated data
   x_proc <- (xdat - quantile(reference, 0.01, na.rm = T)) /
-   quantile(xdat - quantile(reference,0.01, na.rm = T), 0.99, na.rm = T)
+   quantile(xdat - quantile(reference, 0.01, na.rm = T), 0.99, na.rm = T)
   x_proc[x_proc < 0] <- 0
   x_proc[x_proc > 1] <- 1
   x_proc
@@ -132,7 +140,12 @@ norm_fun_bim <- function(xdat, reference = xdat) {
   #' Function for normalisation of unimodal data
   not_na_xdat <- !is.na(xdat)
   not_na_ref <- !is.na(reference)
-  mc <- mclust::Mclust(reference[not_na_ref], modelNames = "E", G = 2, verbose = FALSE)
+  mc <- mclust::Mclust(
+    reference[not_na_ref],
+    modelNames = "E",
+    G = 2,
+    verbose = FALSE
+  )
   pred <- mclust::predict.Mclust(mc, xdat[not_na_xdat])
   normalization <- rep(NA, length(xdat))
   if (diff(mc$parameters$mean) > 0) {
@@ -145,7 +158,9 @@ norm_fun_bim <- function(xdat, reference = xdat) {
 
 
 criteria_iter <- function(
-  columns, data, genes, mask_zero_entries = FALSE, unimodal_margin_quantile = 0.25
+  columns, data, genes,
+  mask_zero_entries = FALSE,
+  unimodal_margin_quantile = 0.25
 ) {
   #' Compute criteria for a subset of genes
   #'
@@ -200,11 +215,14 @@ criteria_iter <- function(
 
       # add enhanced criteria (used for generation)
       criteria.iter$unimodal_margin_quantile <- unimodal_margin_quantile
-      criteria.iter$unimodal_low_quantile <- quantile(x, unimodal_margin_quantile)
-      criteria.iter$unimodal_high_quantile <- quantile(x, 1.0 - unimodal_margin_quantile)
+      criteria.iter$unimodal_low_quantile <-
+        quantile(x, unimodal_margin_quantile)
+      criteria.iter$unimodal_high_quantile <-
+        quantile(x, 1.0 - unimodal_margin_quantile)
       criteria.iter$IQR <- IQR(x)
       criteria.iter$q50 <- quantile(x, 0.50)
-      #criteria.iter$zero_inf_thresh <- criteria.iter$IQR + criteria.iter$q75
+      #criteria.iter$zero_inf_thresh <- 
+      #  criteria.iter$IQR + criteria.iter$q75
       ## parameters for bimodal genes :
       criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
       criteria.iter$gaussian_prob2 <- mc$parameters$pro[2]
@@ -217,8 +235,10 @@ criteria_iter <- function(
       .beta <- 2
       .down <- as.integer(.delta * .alpha + (1 - .delta) * .beta)
       .up <- as.integer((1 - .delta) * .alpha + .delta * .beta)
-      criteria.iter$bim_thresh_down <- max(mc$data[mc$classification == .down & mc$uncertainty <= 0.05])
-      criteria.iter$bim_thresh_up <- min(mc$data[mc$classification == .up & mc$uncertainty <= 0.05])
+      criteria.iter$bim_thresh_down <-
+        max(mc$data[mc$classification == .down & mc$uncertainty <= 0.05])
+      criteria.iter$bim_thresh_up <-
+        min(mc$data[mc$classification == .up & mc$uncertainty <= 0.05])
       ## parameters for unimodal genes :
       criteria.iter$mean <- mean(x)
       criteria.iter$variance <- var(x)
@@ -339,10 +359,12 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
 
   .col_names <- colnames(exp_dataset)
 
-  # Boolean flags to verify there is a reference for each and every single gene of
-  # the exp_dataset
-  .is_subset_of_ref_dataset <- Reduce(`&`, (.col_names %in% colnames(ref_dataset)))
-  .is_subset_of_criteria <- Reduce(`&`, (.col_names %in% rownames(ref_criteria)))
+  # Boolean flags to verify there is a reference for each
+  # and every single gene of the exp_dataset
+  .is_subset_of_ref_dataset <- 
+    Reduce(`&`, (.col_names %in% colnames(ref_dataset)))
+  .is_subset_of_criteria <- 
+    Reduce(`&`, (.col_names %in% rownames(ref_criteria)))
   stopifnot(.is_subset_of_criteria, .is_subset_of_ref_dataset)
 
   # Sort the criteria according to the order of appearance in exp_dataset

@@ -3,6 +3,7 @@ data
 
 # directory created for tinkering :
 manual_tests
+stray
 local_docs
 profile_binr/synthesis/test_simulation.py
 

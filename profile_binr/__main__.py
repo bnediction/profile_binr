@@ -5,12 +5,22 @@ Main module, to define a simple command line interface.
 # TODO : export parser logic to CLI module ?
 
 import argparse
+import warnings
 import multiprocessing as mp
 from pathlib import Path
+from _io import TextIOWrapper
+
 import toml
 import pandas as pd
+from plotnine import ggplot, geom_point, aes, stat_smooth, facet_wrap
+
 from .wrappers.probinr import ProfileBin
 from .synthesis.simulation import random_nan_binariser
+from .utils.diagnostics import (
+    expression_profile_scatterplot,
+    compare_profiles,
+    summarise_by_criteria,
+)
 
 __ACTIONS = [
     "binarize",
@@ -60,17 +70,18 @@ def main():
         parser.add_argument(
             "-f",
             "--expression_file",
-            type=argparse.FileType("r"),
+            # type=argparse.FileType("r"),
+            type=lambda p: Path(p).resolve(),
             help=__HELP_MESSAGES["in_file"],
             dest="in_file",
         )
         parser.add_argument(
             "-p",
             "--publish_dir",
-            type=lambda p: Path(p).resolve().absolute(),
+            type=lambda p: Path(p).resolve(),
             help=__HELP_MESSAGES["publish_dir"],
             dest="publish_dir",
-            default=Path(".").resolve().absolute(),
+            default=Path(".").resolve(),
         )
         parser.add_argument(
             "-c",
@@ -133,8 +144,17 @@ def main():
                 raise SystemExit() from None
             # override all other params
             args.__dict__.update(_config)
+            # If more filters are needed consider iterating over args.__dict__
             if isinstance(args.publish_dir, str):
                 args.publish_dir = Path(args.publish_dir).resolve()
+            if isinstance(args.in_file, str):
+                args.in_file = Path(args.in_file).resolve()
+            elif isinstance(args.in_file, TextIOWrapper):
+                args.in_file = Path(args.in_file.name).resolve()
+            else:
+                raise TypeError(
+                    f"Unexpected type for args.in_file {type(args.in_file)}"
+                )
 
         args.n_threads = min(abs(args.n_threads), mp.cpu_count())
     except (argparse.ArgumentError, ValueError) as _arg_err:
@@ -154,12 +174,22 @@ def main():
     print("create instance and call fit...", end="\t")
     probin_instance = ProfileBin(in_counts)
     probin_instance.fit(n_threads=args.n_threads, mask_zero_entries=args.mask_zeros)
+    _criteria_file = (
+        (args.publish_dir / f"{args.in_file.name.replace('.csv', '')}_criteria.csv")
+        .resolve()
+        .as_posix()
+    )
+    probin_instance.criteria.to_csv(_criteria_file)
     print("Done.")
     if "simulate" in args.actions:
         print("call simulation fit...", end="\t")
         probin_instance.simulation_fit(
             n_threads=args.n_threads, mask_zero_entries=args.mask_zeros
         )
+        _simulation_criteria_file = _criteria_file.replace(
+            "_criteria.csv", "_simulation_criteria.csv"
+        )
+        probin_instance.simulation_criteria.to_csv(_simulation_criteria_file)
         print("Done.")
 
     # use a results dict !
@@ -184,19 +214,55 @@ def main():
             _bin = results.get("py_binarize") if _bin is None else _bin
             _bin = probin_instance.py_binarize() if _bin is None else _bin
             results[action] = action_calls[action](_bin)
-        print("Done.")
-
-    for action, frame in results.items():
-        print(f"action={action}, type={type(frame)}")
-        if isinstance(args.in_file, str):
-            args.in_file = Path(args.in_file).resolve()
-        frame.to_csv(
+            _summary = compare_profiles(
+                probin_instance.criteria,
+                in_counts,
+                results[action],
+                "Original",
+                "Simulated",
+            )
+            # TODO : move this into diagnostics ?
+            plot_1 = (
+                ggplot(_summary, aes("Mean", "Std"))
+                + geom_point(aes(color="Category", fill="Category"), alpha=0.55)
+                + facet_wrap("~Data")
+            )
+            plot_2 = (
+                ggplot(_summary, aes("Mean", "Std"))
+                + geom_point(aes(color="Data", fill="Data"), alpha=0.55)
+                + facet_wrap("~Category")
+            )
+            plot_1_out_file = (
+                (
+                    args.publish_dir
+                    / f"{args.in_file.name.replace('.csv', '')}_{action}d_by_Data.png"
+                )
+                .resolve()
+                .as_posix()
+            )
+            plot_2_out_file = plot_1_out_file.replace(
+                "_by_Data.png", "_by_Category.png"
+            )
+            # print(plot_1_out_file)
+            # print(plot_2_out_file)
+            warnings.filterwarnings("ignore")
+            plot_1.save(plot_1_out_file, height=25, width=40, units="cm", verbose=False)
+            plot_2.save(plot_2_out_file, height=25, width=40, units="cm", verbose=False)
+            warnings.filterwarnings("default")
+        # print(args.in_file.name.replace(".csv", ""))
+        results[action].to_csv(
             args.publish_dir / f"{args.in_file.name.replace('.csv', '')}_{action}d.csv"
         )
+        print("Done.")
 
     # END CLI LOGIC
+
+    # return vars()
     return 0
 
 
 if __name__ == "__main__":
+    # global main_env
+    # main_env = main()
+    # [globals().update({k: main_env[k]}) for k in main_env.keys()]
     main()

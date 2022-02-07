@@ -112,13 +112,7 @@ def main():
         #    metavar="KEY=VAL",
         # )
 
-        try:
-            args = parser.parse_args()
-            args.publish_dir.mkdir(parents=True, exist_ok=True)
-        except FileExistsError as _f_e_err:
-            parser.print_help()
-            print("\nERROR : provided `publish_dir` exists and is not a directory")
-            raise SystemExit from None
+        args = parser.parse_args()
         if not any((bool(args.in_file), args.config_file)):
             parser.print_help()
             raise SystemExit() from None
@@ -157,6 +151,12 @@ def main():
                 )
 
         args.n_threads = min(abs(args.n_threads), mp.cpu_count())
+        try:
+            args.publish_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError as _f_e_err:
+            parser.print_help()
+            print("\nERROR : provided `publish_dir` exists and is not a directory")
+            raise SystemExit from None
     except (argparse.ArgumentError, ValueError) as _arg_err:
         parser.print_help()
         print(_arg_err)

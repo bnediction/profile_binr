@@ -1,3 +1,10 @@
+"""
+    Module containing custom subclasses of Path and dict.
+    These subclasses have additional behaviour which is considered
+    to be practical by the authors.
+
+    Classes here defined are of no utility to the end user.
+"""
 from pathlib import (
     Path as _Path_,
     PosixPath as _PosixPath_,
@@ -34,13 +41,9 @@ class Path(_Path_):
 class WindowsPath(_WindowsPath_, Path):
     """ Helper for Path, not to be directly initialized. """
 
-    pass
-
 
 class PosixPath(_PosixPath_, Path):
     """ Helper for Path, not to be directly initialized. """
-
-    pass
 
 
 class ObjDict(dict):

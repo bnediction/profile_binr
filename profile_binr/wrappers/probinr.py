@@ -53,9 +53,10 @@ import pandas as pd
 from ..synthesis.simulation import biased_simulation_from_binary_state
 
 # R source code locations :
-__PROBINR_DIR__ = Path(__file__).parent.absolute().parent.absolute().joinpath("_R")
-__PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").absolute()
-__PROBINR_BOOTSTRAP__ = __PROBINR_DIR__.joinpath("install_deps.R").absolute()
+__PROBINR_DIR__ = Path(__file__).resolve().parent.parent.joinpath("_R")
+__PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").resolve()
+__PROBINR_SRC_DEV__ = __PROBINR_DIR__.joinpath("PROFILE_source_dev.R").resolve()
+__PROBINR_BOOTSTRAP__ = __PROBINR_DIR__.joinpath("install_deps.R").resolve()
 
 rpy2_logger.setLevel(logging.ERROR)  # will display errors, but not warnings
 
@@ -140,8 +141,8 @@ class ProfileBin(object):
     # https://numpy.org/doc/stable/reference/random/multithreading.html
     # https://numpy.org/devdocs/reference/random/index.html
     def __init__(self, data: pd.DataFrame):
-        # self.__addr will be used to keep track of R objects related to the instance :
-        self.__addr: str = str(hex(id(self)))
+        # self._addr will be used to keep track of R objects related to the instance :
+        self._addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
         self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
@@ -207,7 +208,7 @@ class ProfileBin(object):
     @property
     def _data_in_r(self) -> bool:
         """ Determine if the data to fit the criteria is present in the R environment. """
-        return f"META_RNA_{self.__addr}" in self.r_ls()
+        return f"META_RNA_{self._addr}" in self.r_ls()
 
     def r_instantiate_data(
         self, data: Union[pd.DataFrame, Any], identifier: str
@@ -279,12 +280,12 @@ class ProfileBin(object):
 
         # the data must be instantiated before performing the R call :
         if not self._data_in_r:
-            self.r_instantiate_data(self.data, f"META_RNA_{self.__addr}")
+            self.r_instantiate_data(self.data, f"META_RNA_{self._addr}")
 
         # call compute_criteria only once
         if not self._is_trained:
             params = [
-                f"exp_dataset = META_RNA_{self.__addr}",
+                f"exp_dataset = META_RNA_{self._addr}",
                 f"n_threads = {n_threads}",
                 f"dor_threshold = {dor_threshold}",
                 f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
@@ -294,7 +295,7 @@ class ProfileBin(object):
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
                     self._criteria = r_objs.conversion.rpy2py(
                         self.r(
-                            f"criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+                            f"criteria_{self._addr} <- compute_criteria({', '.join(params)})"
                         )
                     )
             except RRuntimeError as _rer:
@@ -325,10 +326,10 @@ class ProfileBin(object):
         # Perform simulation_fit iff there is at least one Zero-Inflated gene.
         if len(self._zero_inf_idx) > 0:
             self._zero_inf_df = self._data.loc[:, self._zero_inf_idx]
-            self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self.__addr}")
+            self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self._addr}")
 
             params = [
-                f"exp_dataset = zero_inf_RNA_{self.__addr}",
+                f"exp_dataset = zero_inf_RNA_{self._addr}",
                 f"n_threads = {n_threads}",
                 f"dor_threshold = {dor_threshold}",
                 f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
@@ -338,7 +339,7 @@ class ProfileBin(object):
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
                     self._zero_inf_criteria = r_objs.conversion.rpy2py(
                         self.r(
-                            f"zero_inf_criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+                            f"zero_inf_criteria_{self._addr} <- compute_criteria({', '.join(params)})"
                         )
                     )
 
@@ -384,17 +385,17 @@ class ProfileBin(object):
         _df_name: str = ""
         _rm_df: bool = False
         if data is not None:
-            _df_name = f"bin_{self.__addr}_{self._random_string()}"
+            _df_name = f"bin_{self._addr}_{self._random_string()}"
             self.r_instantiate_data(data, _df_name)
             _rm_df = True
         else:
-            _df_name = f"META_RNA_{self.__addr}"
+            _df_name = f"META_RNA_{self._addr}"
             data = self.data
 
         params = [
             f"exp_dataset = {_df_name}",
-            f"ref_dataset = META_RNA_{self.__addr}",
-            f"ref_criteria = criteria_{self.__addr}",
+            f"ref_dataset = META_RNA_{self._addr}",
+            f"ref_criteria = criteria_{self._addr}",
         ]
 
         if gene is not None:
@@ -641,5 +642,122 @@ class ProfileBin(object):
     def clear_r_envir(self):
         """Remove an all R objects that have been created by the ProfileBin
         instance."""
-        _instance_objs = [f"'{obj}'" for obj in self.r_ls() if self.__addr in obj]
+        _instance_objs = [f"'{obj}'" for obj in self.r_ls() if self._addr in obj]
         _ = self.r(f"rm(list = c({', '.join(_instance_objs)}))")
+
+
+class ProfileBin2(ProfileBin):
+    """ Docstring """
+
+    def __init__(self, data: pd.DataFrame):
+        # self._addr will be used to keep track of R objects related to the instance :
+        self._addr: str = str(hex(id(self)))
+        self.r = r_objs.r
+        self.r_globalenv = GLOBALENV
+        self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
+        self._criteria: pd.DataFrame
+        self._zero_inf_criteria: pd.DataFrame
+        self._simulation_criteria: pd.DataFrame
+        self._zero_inf_idx: pd.core.indexes.base.Index
+        self._zero_inf_df: pd.DataFrame
+        self._binary_func_by_category = {
+            "ZeroInf": self._binarize_unimodal_and_zeroinf,
+            "Unimodal": self._binarize_unimodal_and_zeroinf,
+            "Bimodal": self._binarize_bimodal,
+            "Discarded": self._binarize_discarded,
+        }
+
+        # try loading all packages and functions, installing them upon failure
+        try:
+            with open(__PROBINR_SRC_DEV__, "r") as _probin_source:
+                self.r("".join(_probin_source.readlines()))
+        except RRuntimeError:
+            print("\nERROR : one or more R dependencies are not installed")
+            print("Trying to automatically satisfy missing dependencies\n")
+            try:
+                # install dependencies :
+                with open(__PROBINR_BOOTSTRAP__, "r") as f:
+                    self.r("".join(f.readlines()))
+                print("\n Missing dependencies successfully installed \n")
+                # re-import the R source as functions were not saved because
+                # of the previous RRuntimeError
+                with open(__PROBINR_SRC__, "r") as f:
+                    self.r("".join(f.readlines()))
+            except RRuntimeError as _rer:
+                print("Bootstrapping the installation of R dependencies failed:")
+                raise _rer from None
+
+        # sanitise inputs :
+        if not isinstance(data, pd.DataFrame):
+            raise TypeError(
+                f"Parameter 'data' must be of type 'pandas.DataFrame' not {type(data)}"
+            )
+        else:
+            self._data: pd.DataFrame = data
+
+    def fit(
+        self,
+        n_threads: Optional[int] = multiprocessing.cpu_count(),
+        dor_threshold: Optional[float] = 0.95,
+        mask_zero_entries: Optional[bool] = False,
+        unimodal_margin_quantile: Optional[float] = 0.25,
+    ) -> "ProfileBin":
+        """
+        Compute the criteria needed to decide which binarization rule
+        will be applied to each gene. This is performed by calling
+        the corresponding R function `compute_criteria()` via rpy2.
+
+        Arguments :
+            n_threads : The number of parallel processes (threads) to be used.
+             log_time : Should the call to the R function be timed ?
+              logfile : The file in which logs should be saved.
+
+        Returns :
+            None
+
+        "Side effects" : a pandas.DataFrame containing the criteria and the label
+        for each gene will be stored within the class.
+
+        It is accessible via :
+        >>> self.criteria
+
+        criteria's columns are :
+            Dip, BI, Kurtosis, DropOutRate, MeanNZ, DenPeak, Amplitude, Category
+
+        IMPORTANT : `compute_criteria()` uses descriptors and memory
+        mappings, which are temporarily stored in files containing the
+        current datetime and a small hash to ensure the unicity of names.
+
+        Do not manipulate or erase files which look like this:
+            Wed Apr 14 13:47:21 2021 MFNVP2486W.bin
+            Wed Apr 14 13:47:21 2021 MFNVP2486W.desc
+
+        They will be automatically removed one the criteria is calculated
+        for all genes in the dataset.
+
+        """
+
+        # the data must be instantiated before performing the R call :
+        if not self._data_in_r:
+            self.r_instantiate_data(self.data, f"META_RNA_{self._addr}")
+
+        # call compute_criteria only once
+        if not self._is_trained:
+            params = [
+                f"exp_dataset = META_RNA_{self._addr}",
+                f"n_threads = {n_threads}",
+                f"dor_threshold = {dor_threshold}",
+                f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+                f"unimodal_margin_quantile = {unimodal_margin_quantile}",
+            ]
+            try:
+                with localconverter(r_objs.default_converter + pandas2ri.converter):
+                    self._criteria = r_objs.conversion.rpy2py(
+                        self.r(
+                            f"criteria_{self._addr} <- compute_criteria2({', '.join(params)})"
+                        )
+                    )
+            except RRuntimeError as _rer:
+                raise RRuntimeError(self._build_r_error_hint(_rer)) from None
+
+        return self

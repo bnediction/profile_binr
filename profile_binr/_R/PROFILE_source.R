@@ -98,7 +98,8 @@ BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
   #' based on a 2-modes gaussian mixture model (with equal variances).
   #' Can be called with a reference dataset
   mc <- mclust::Mclust(
-    na.omit(ref_dataset), modelNames = "E",
+    na.omit(ref_dataset),
+    modelNames = "E",
     G = 2, verbose = FALSE
   )
   classif <- rep(NA, length(exp_dataset))
@@ -119,7 +120,7 @@ BIMclass <- function(exp_dataset, ref_dataset = exp_dataset) {
 norm_fun_lin <- function(xdat, reference = xdat) {
   #' Function for normalisation of zero-inflated data
   x_proc <- (xdat - quantile(reference, 0.01, na.rm = T)) /
-   quantile(xdat - quantile(reference, 0.01, na.rm = T), 0.99, na.rm = T)
+    quantile(xdat - quantile(reference, 0.01, na.rm = T), 0.99, na.rm = T)
   x_proc[x_proc < 0] <- 0
   x_proc[x_proc > 1] <- 1
   x_proc
@@ -157,11 +158,9 @@ norm_fun_bim <- function(xdat, reference = xdat) {
 }
 
 
-criteria_iter <- function(
-  columns, data, genes,
-  mask_zero_entries = FALSE,
-  unimodal_margin_quantile = 0.25
-) {
+criteria_iter <- function(columns, data, genes,
+                          mask_zero_entries = FALSE,
+                          unimodal_margin_quantile = 0.25) {
   #' Compute criteria for a subset of genes
   #'
   #' Data should be generated calling
@@ -175,25 +174,25 @@ criteria_iter <- function(
   criterix <- foreach::foreach(i = columns, .combine = rbind) %do% {
     x <- na.omit(unlist(data[, i]))
     criteria.iter <- list(
-    # original criteria
-        Gene = genes[i], Dip = NA, BI = NA, Kurtosis = NA,
-        DropOutRate = NA, MeanNZ = NA,
-        DenPeak = NA, Amplitude = max(x) - min(x),
-    # added criteria
-        gaussian_prob1 = NA,
-        gaussian_prob2 = NA,
-        gaussian_mean1 = NA,
-        gaussian_mean2 = NA,
-        gaussian_variance = NA,
-        mean = NA,
-        variance = NA,
-        unimodal_margin_quantile = NA,
-        unimodal_low_quantile = NA,
-        unimodal_high_quantile = NA,
-        IQR = NA,
-        q50 = NA,
-        bim_thresh_down = NA,
-        bim_thresh_up = NA
+      # original criteria
+      Gene = genes[i], Dip = NA, BI = NA, Kurtosis = NA,
+      DropOutRate = NA, MeanNZ = NA,
+      DenPeak = NA, Amplitude = max(x) - min(x),
+      # added criteria
+      gaussian_prob1 = NA,
+      gaussian_prob2 = NA,
+      gaussian_mean1 = NA,
+      gaussian_mean2 = NA,
+      gaussian_variance = NA,
+      mean = NA,
+      variance = NA,
+      unimodal_margin_quantile = NA,
+      unimodal_low_quantile = NA,
+      unimodal_high_quantile = NA,
+      IQR = NA,
+      q50 = NA,
+      bim_thresh_down = NA,
+      bim_thresh_up = NA
     )
 
     if (criteria.iter$Amplitude != 0) {
@@ -221,7 +220,7 @@ criteria_iter <- function(
         quantile(x, 1.0 - unimodal_margin_quantile)
       criteria.iter$IQR <- IQR(x)
       criteria.iter$q50 <- quantile(x, 0.50)
-      #criteria.iter$zero_inf_thresh <- 
+      # criteria.iter$zero_inf_thresh <-
       #  criteria.iter$IQR + criteria.iter$q75
       ## parameters for bimodal genes :
       criteria.iter$gaussian_prob1 <- mc$parameters$pro[1]
@@ -249,13 +248,11 @@ criteria_iter <- function(
   criterix
 }
 
-compute_criteria <- function(
-  exp_dataset, n_threads,
-  dor_threshold = 0.95,
-  mask_zero_entries = FALSE,
-  unimodal_margin_quantile = 0.25,
-  descriptor_filename = NULL
-  ) {
+compute_criteria <- function(exp_dataset, n_threads,
+                             dor_threshold = 0.95,
+                             mask_zero_entries = FALSE,
+                             unimodal_margin_quantile = 0.25,
+                             descriptor_filename = NULL) {
   #' Function used to compute all statistical tools and criteria
   #' needed to perform the classification of distributions
   #' in the following categories:
@@ -265,8 +262,7 @@ compute_criteria <- function(
   #'  * bimodal
   #'
 
-  exp_dataset <- exp_dataset %>%
-        tibble::rownames_to_column("individual_id")
+  exp_dataset %<>% tibble::rownames_to_column("individual_id")
 
   .remove_descriptor <- FALSE
   if (is.null(descriptor_filename)) {
@@ -278,72 +274,74 @@ compute_criteria <- function(
   backing_file <- glue::glue("{descriptor_filename}.bin")
   descriptor_file <- glue::glue("{descriptor_filename}.desc")
 
+  # .col_names <- colnames(exp_dataset)
   genes <- exp_dataset %>%
+    dplyr::select(-individual_id) %>%
+    colnames()
+
+
+  tryCatch(
+    {
+      parallel_cluster <-
+        snow::makeSOCKcluster(names = rep("localhost", n_threads))
+      doSNOW::registerDoSNOW(parallel_cluster)
+      big_exp_dataset <- exp_dataset %>%
         dplyr::select(-individual_id) %>%
-        colnames()
-  n_genes <- length(genes)
+        as.data.frame() %>%
+        bigmemory::as.big.matrix(
+          type = "double", separated = FALSE,
+          backingfile = backing_file,
+          descriptorfile = descriptor_file
+        )
 
+      big_exp_descriptor <- bigmemory::describe(big_exp_dataset)
+      gene_iterator <- split_in_n(1:ncol(big_exp_dataset), n_threads)
 
-  tryCatch({
-    parallel_cluster <-
-      snow::makeSOCKcluster(names = rep("localhost", n_threads))
-    doSNOW::registerDoSNOW(parallel_cluster)
-    big_exp_dataset <- exp_dataset %>%
-            dplyr::select(-individual_id) %>%
-            as.data.frame %>%
-            bigmemory::as.big.matrix(
-              type = "double", separated = FALSE,
-              backingfile = backing_file,
-              descriptorfile = descriptor_file
-            )
-
-    big_exp_descriptor <- bigmemory::describe(big_exp_dataset)
-    gene_iterator <- split_in_n(1:ncol(big_exp_dataset), n_threads)
-
-    criteria <- foreach::foreach(
-      i = gene_iterator, .combine = rbind, .inorder = TRUE,
-      .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")
-    ) %dopar% {
-      require(foreach)
-      require(mclust)
-      yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
-      criteria_iter(
-        i, yy, genes,
-        mask_zero_entries = mask_zero_entries,
-        unimodal_margin_quantile = unimodal_margin_quantile
-      )
+      criteria <- foreach::foreach(
+        i = gene_iterator, .combine = rbind, .inorder = TRUE,
+        .export = c("criteria_iter", "BI", "gaussian_mixture_from_data")
+      ) %dopar% {
+        require(foreach)
+        require(mclust)
+        yy <- bigmemory::attach.big.matrix(big_exp_descriptor)
+        criteria_iter(
+          i, yy, genes,
+          mask_zero_entries = mask_zero_entries,
+          unimodal_margin_quantile = unimodal_margin_quantile
+        )
+      }
+    },
+    finally = {
+      snow::stopCluster(parallel_cluster)
+      if (.remove_descriptor) {
+        unlink(backing_file)
+        unlink(descriptor_file)
+      }
     }
-  }, finally = {
-    snow::stopCluster(parallel_cluster)
-    if (.remove_descriptor) {
-      unlink(backing_file)
-      unlink(descriptor_file)
-    }
-  }
   )
 
 
   threshold <- median(criteria$Amplitude) / 10
   # Added `tibble` call to enable the use of dplyr operators.
   criteria <- criteria %>%
-        dplyr::tibble() %>%
-        dplyr::mutate(Category = ifelse(
-          Amplitude < threshold | DropOutRate > dor_threshold,
-          "Discarded", NA)
-        ) %>%
-        dplyr::mutate(Category = ifelse(
-          is.na(Category) &
-          (BI > 1.5 & Dip < 0.05 & Kurtosis < 1),
-          "Bimodal", Category)
-        ) %>%
-        dplyr::mutate(Category = ifelse(
-          is.na(Category) & DenPeak < threshold,
-          "ZeroInf", Category)
-        ) %>%
-        dplyr::mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
+    dplyr::tibble() %>%
+    dplyr::mutate(Category = ifelse(
+      Amplitude < threshold | DropOutRate > dor_threshold,
+      "Discarded", NA
+    )) %>%
+    dplyr::mutate(Category = ifelse(
+      is.na(Category) &
+        (BI > 1.5 & Dip < 0.05 & Kurtosis < 1),
+      "Bimodal", Category
+    )) %>%
+    dplyr::mutate(Category = ifelse(
+      is.na(Category) & DenPeak < threshold,
+      "ZeroInf", Category
+    )) %>%
+    dplyr::mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
 
-  criteria %>%
-        tibble::column_to_rownames("Gene")
+  criteria %<>% tibble::column_to_rownames("Gene")
+  criteria[genes, ]
 }
 
 # compute_criteria_sequential <- function(exp_dataset, individual_id)
@@ -361,18 +359,17 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
 
   # Boolean flags to verify there is a reference for each
   # and every single gene of the exp_dataset
-  .is_subset_of_ref_dataset <- 
+  .is_subset_of_ref_dataset <-
     Reduce(`&`, (.col_names %in% colnames(ref_dataset)))
-  .is_subset_of_criteria <- 
+  .is_subset_of_criteria <-
     Reduce(`&`, (.col_names %in% rownames(ref_criteria)))
   stopifnot(.is_subset_of_criteria, .is_subset_of_ref_dataset)
 
   # Sort the criteria according to the order of appearance in exp_dataset
-  ref_criteria <- ref_criteria[.col_names,]
+  ref_criteria <- ref_criteria[.col_names, ]
   ref_dataset <- ref_dataset[, .col_names]
 
   if (!missing(gene)) {
-
     stopifnot(gene %in% rownames(ref_criteria), gene %in% colnames(ref_dataset))
 
     gene_cat <- ref_criteria[gene, "Category"]
@@ -390,7 +387,6 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     names(gene_bin) <- colnames(exp_dataset)
 
     return(gene_bin)
-
   } else {
 
     # given the prior subset checks, this condition seems unreachable.  TODO : verify
@@ -402,20 +398,27 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     # these vectors should match the order
     logi_dis <- ref_criteria$Category == "Discarded"
     logi_OS <- ref_criteria$Category == "Unimodal" | ref_criteria$Category ==
-            "ZeroInf"
+      "ZeroInf"
     logi_bim <- ref_criteria$Category == "Bimodal"
 
-    exp_dataset[, logi_dis] <- sapply(exp_dataset[, logi_dis], function(x) rep(NA,
-            length(x)))
-    exp_dataset[, logi_OS] <- mapply(OSclass, as.data.frame(exp_dataset[, logi_OS]),
-            as.data.frame(ref_dataset[, logi_OS]))
-    exp_dataset[, logi_bim] <- mapply(BIMclass, as.data.frame(exp_dataset[, logi_bim]),
-            as.data.frame(ref_dataset[, logi_bim]))
+    exp_dataset[, logi_dis] <- sapply(exp_dataset[, logi_dis], function(x) {
+      rep(
+        NA,
+        length(x)
+      )
+    })
+    exp_dataset[, logi_OS] <- mapply(
+      OSclass, as.data.frame(exp_dataset[, logi_OS]),
+      as.data.frame(ref_dataset[, logi_OS])
+    )
+    exp_dataset[, logi_bim] <- mapply(
+      BIMclass, as.data.frame(exp_dataset[, logi_bim]),
+      as.data.frame(ref_dataset[, logi_bim])
+    )
 
     colnames(exp_dataset) <- .col_names
     return(exp_dataset)
   }
-
 }
 
 
@@ -432,11 +435,10 @@ normalize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
   .is_subset_of_criteria <- Reduce(`&`, (.col_names %in% rownames(ref_criteria)))
   stopifnot(.is_subset_of_criteria, .is_subset_of_ref)
 
-  ref_criteria <- ref_criteria[.col_names,]
+  ref_criteria <- ref_criteria[.col_names, ]
   ref_dataset <- ref_dataset[, .col_names]
 
   if (!missing(gene)) {
-
     stopifnot(gene %in% rownames(ref_criteria), gene %in% colnames(ref_dataset))
 
     gene_cat <- ref_criteria[gene, "Category"]
@@ -445,13 +447,10 @@ normalize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
 
     if (gene_cat == "Discarded") {
       gene_bin <- rep(NA, length(x))
-
     } else if (gene_cat == "Bimodal") {
       gene_bin <- norm_fun_bim(x, x_ref)
-
     } else if (gene_cat == "Unimodal") {
       gene_bin <- norm_fun_sig(x, x_ref)
-
     } else {
       gene_bin <- norm_fun_lin(x, x_ref)
     }
@@ -459,7 +458,6 @@ normalize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     names(gene_bin) <- colnames(exp_dataset)
 
     return(gene_bin)
-
   } else {
 
     # given the prior subset checks, this condition seems unreachable.  TODO : verify
@@ -473,16 +471,25 @@ normalize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     logi_zero <- ref_criteria$Category == "ZeroInf"
     logi_bim <- ref_criteria$Category == "Bimodal"
 
-    exp_dataset[, logi_dis] <- sapply(exp_dataset[, logi_dis], function(x) rep(NA,
-            length(x)))
-    exp_dataset[, logi_uni] <- mapply(norm_fun_sig, as.data.frame(exp_dataset[,
-            logi_uni]), as.data.frame(ref_dataset[, logi_uni]))
-    exp_dataset[, logi_zero] <- mapply(norm_fun_lin, as.data.frame(exp_dataset[,
-            logi_zero]), as.data.frame(ref_dataset[, logi_zero]))
-    exp_dataset[, logi_bim] <- mapply(norm_fun_bim, as.data.frame(exp_dataset[,
-            logi_bim]), as.data.frame(ref_dataset[, logi_bim]))
+    exp_dataset[, logi_dis] <- sapply(exp_dataset[, logi_dis], function(x) {
+      rep(
+        NA,
+        length(x)
+      )
+    })
+    exp_dataset[, logi_uni] <- mapply(norm_fun_sig, as.data.frame(exp_dataset[
+      ,
+      logi_uni
+    ]), as.data.frame(ref_dataset[, logi_uni]))
+    exp_dataset[, logi_zero] <- mapply(norm_fun_lin, as.data.frame(exp_dataset[
+      ,
+      logi_zero
+    ]), as.data.frame(ref_dataset[, logi_zero]))
+    exp_dataset[, logi_bim] <- mapply(norm_fun_bim, as.data.frame(exp_dataset[
+      ,
+      logi_bim
+    ]), as.data.frame(ref_dataset[, logi_bim]))
 
     return(exp_dataset)
   }
-
 }

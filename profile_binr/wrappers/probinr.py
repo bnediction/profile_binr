@@ -55,7 +55,6 @@ from ..synthesis.simulation import biased_simulation_from_binary_state
 # R source code locations :
 __PROBINR_DIR__ = Path(__file__).resolve().parent.parent.joinpath("_R")
 __PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").resolve()
-__PROBINR_SRC_DEV__ = __PROBINR_DIR__.joinpath("PROFILE_source_dev.R").resolve()
 __PROBINR_BOOTSTRAP__ = __PROBINR_DIR__.joinpath("install_deps.R").resolve()
 
 rpy2_logger.setLevel(logging.ERROR)  # will display errors, but not warnings

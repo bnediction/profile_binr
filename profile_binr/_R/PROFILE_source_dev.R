@@ -248,7 +248,7 @@ criteria_iter <- function(columns, data, genes,
   criterix
 }
 
-compute_criteria2 <- function(exp_dataset, n_threads,
+compute_criteria <- function(exp_dataset, n_threads,
                              dor_threshold = 0.95,
                              mask_zero_entries = FALSE,
                              unimodal_margin_quantile = 0.25,
@@ -340,8 +340,6 @@ compute_criteria2 <- function(exp_dataset, n_threads,
     )) %>%
     dplyr::mutate(Category = ifelse(is.na(Category), "Unimodal", Category))
 
-  # ref_criteria <- ref_criteria[.col_names,]
-  # ref_dataset <- ref_dataset[, .col_names]
   criteria %<>% tibble::column_to_rownames("Gene")
   criteria[genes, ]
 }

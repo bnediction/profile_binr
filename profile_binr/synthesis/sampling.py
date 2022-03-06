@@ -61,7 +61,7 @@ def _dropout_mask(dropout_rate: float, size: int) -> np.ndarray:
 
 
 def simulate_gene(
-    criterium: pd.Series, n_samples: int, enforce_dropout_rate: bool = True
+    criterion: pd.Series, n_samples: int, enforce_dropout_rate: bool = True
 ) -> pd.Series:
     """Simulate the expression of a gene, using the information provided by
     the criteria dataframe of a profile_binr.ProfileBin class.
@@ -69,7 +69,7 @@ def simulate_gene(
     Parametres
     ----------
 
-    criterium : an entry (row) of the criteria dataframe of a ProfileBin class,
+    criterion : an entry (row) of the criteria dataframe of a ProfileBin class,
     trained on the dataset which you want to simulate.
 
     n_samples : number of samples to generate
@@ -80,37 +80,37 @@ def simulate_gene(
     """
     _data: np.array
 
-    if criterium["Category"] == "Discarded":
+    if criterion["Category"] == "Discarded":
         _data = np.full(n_samples, np.nan)
-    elif criterium["Category"] == "Unimodal":
+    elif criterion["Category"] == "Unimodal":
         _data = _sim_unimodal(
-            mean=criterium["mean"],
-            std_dev=np.sqrt(criterium["variance"]),
+            mean=criterion["mean"],
+            std_dev=np.sqrt(criterion["variance"]),
             size=n_samples,
         )
         # TODO : discuss the validity of this approach
         if enforce_dropout_rate:
             _data *= _dropout_mask(
-                dropout_rate=criterium["DropOutRate"], size=n_samples
+                dropout_rate=criterion["DropOutRate"], size=n_samples
             )
-    elif criterium["Category"] == "Bimodal":
+    elif criterion["Category"] == "Bimodal":
         _data = _sim_bimodal(
-            mean1=criterium["gaussian_mean1"],
-            mean2=criterium["gaussian_mean2"],
-            std_dev=np.sqrt(criterium["gaussian_variance"]),
-            weights=(criterium["gaussian_prob1"], criterium["gaussian_prob2"]),
+            mean1=criterion["gaussian_mean1"],
+            mean2=criterion["gaussian_mean2"],
+            std_dev=np.sqrt(criterion["gaussian_variance"]),
+            weights=(criterion["gaussian_prob1"], criterion["gaussian_prob2"]),
             size=n_samples,
         )
         if enforce_dropout_rate:
             _data *= _dropout_mask(
-                dropout_rate=criterium["DropOutRate"], size=n_samples
+                dropout_rate=criterion["DropOutRate"], size=n_samples
             )
-    elif criterium["Category"] == "ZeroInf":
-        _data = __sim_zero_inf(_lambda=criterium["lambda"], size=n_samples)
+    elif criterion["Category"] == "ZeroInf":
+        _data = __sim_zero_inf(_lambda=criterion["lambda"], size=n_samples)
     else:
-        raise ValueError(f"Unknown category `{criterium['Category']}`, aborting")
+        raise ValueError(f"Unknown category `{criterion['Category']}`, aborting")
 
-    return pd.Series(data=_data, name=criterium.name)
+    return pd.Series(data=_data, name=criterion.name)
 
 
 def _simulate_sequential(

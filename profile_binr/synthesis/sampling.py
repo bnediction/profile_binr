@@ -1,5 +1,5 @@
 """
-Module to simulate genes from learnt criteria
+Module to sample genes from learnt criteria
 """
 import functools
 import multiprocessing
@@ -19,7 +19,7 @@ def __sim_zero_inf(
     lambda
     """
     if not ignore_deprecation:
-        __err_message = ["Error: ", "ZeroInf genes cannot be directly simulated"]
+        __err_message = ["Error: ", "ZeroInf genes cannot be directly sampled"]
         raise DeprecationWarning("".join(__err_message))
     return np.random.exponential(scale=1 / _lambda, size=size)
 
@@ -53,14 +53,16 @@ def _sim_bimodal(
     )
 
 
-def _dropout_mask(dropout_rate: float, size: int) -> np.ndarray:
+def _dropout_mask(
+    dropout_rate: float, size: int, rng: np.random.Generator = _GLOBAL_RNG
+) -> np.ndarray:
     """ Dropout mask to obtain the same dropout_rate as originally estimated"""
-    return np.random.choice(
+    return rng.choice(
         (0, 1), size=size, replace=True, p=(dropout_rate, 1.0 - dropout_rate)
     )
 
 
-def simulate_gene(
+def sample_gene(
     criterion: pd.Series, n_samples: int, enforce_dropout_rate: bool = True
 ) -> pd.Series:
     """Simulate the expression of a gene, using the information provided by
@@ -70,7 +72,7 @@ def simulate_gene(
     ----------
 
     criterion : an entry (row) of the criteria dataframe of a ProfileBin class,
-    trained on the dataset which you want to simulate.
+    trained on the dataset which you want to sample.
 
     n_samples : number of samples to generate
 
@@ -113,13 +115,13 @@ def simulate_gene(
     return pd.Series(data=_data, name=criterion.name)
 
 
-def _simulate_sequential(
+def _sample_sequential(
     df: pd.DataFrame, n_samples: int, enforce_dropout_rate: bool = True
 ) -> pd.DataFrame:
     """ Simulate samples from a criteria dataframe, sequentially """
     return (
         df.apply(
-            lambda y: simulate_gene(
+            lambda y: sample_gene(
                 y, n_samples=n_samples, enforce_dropout_rate=enforce_dropout_rate
             ),
             axis=1,
@@ -127,7 +129,7 @@ def _simulate_sequential(
     )[0]
 
 
-def simulate_from_criteria(
+def sample_from_criteria(
     criteria: pd.DataFrame,
     n_samples: int,
     enforce_dropout_rate: bool = True,
@@ -135,7 +137,7 @@ def simulate_from_criteria(
 ) -> pd.DataFrame:
     """ Create a new expression dataframe from a criteria dataframe using multithreading  """
     _partial_simulation_function: Callable = functools.partial(
-        _simulate_sequential,
+        _sample_sequential,
         n_samples=n_samples,
         enforce_dropout_rate=enforce_dropout_rate,
     )

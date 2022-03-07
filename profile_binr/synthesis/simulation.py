@@ -7,34 +7,37 @@ import multiprocessing as mp
 from typing import Optional, Union
 
 # TODO : change import scheme
-from .sampling import _dropout_mask, pd, np, ss
+from .sampling import _dropout_mask, pd, np, ss, _GLOBAL_RNG
 
-# TODO : add a module-wide rng ?
-_DEFAULT_RNG_SEED: int = 1928374650
-_MODULE_SEED_SEQUENCE_GENERATOR = np.random.SeedSequence(_DEFAULT_RNG_SEED)
-# TODO : figure a way to remove the magic number ?
-_MODULE_CHILD_SEEDS = _MODULE_SEED_SEQUENCE_GENERATOR.spawn(5)
-# we need 5, one for each function besides biased_simulation_from_binary_state()
-_MODULE_RNGS = [np.random.default_rng(s) for s in _MODULE_CHILD_SEEDS]
-for m in _MODULE_RNGS:
-    print(m.__getstate__()["state"]["state"])
+_RandType = Union[np.random.Generator, int]
+
+## TODO : add a module-wide rng ?
+# _DEFAULT_RNG_SEED: int = 1928374650
+# _MODULE_SEED_SEQUENCE_GENERATOR = np.random.SeedSequence(_DEFAULT_RNG_SEED)
+## TODO : figure a way to remove the magic number ?
+# _MODULE_CHILD_SEEDS = _MODULE_SEED_SEQUENCE_GENERATOR.spawn(5)
+## we need 5, one for each function besides biased_simulation_from_binary_state()
+# _MODULE_RNGS = [np.random.default_rng(s) for s in _MODULE_CHILD_SEEDS]
+# for m in _MODULE_RNGS:
+#    print(m.__getstate__()["state"]["state"])
 ## TODO : define this function
 # def mean_binariser(binary_df, normalized_counts_df):
 #    pass
 
 # TODO : give this a better names ?
-def random_nan_binariser(df):
+def random_nan_binariser(df: pd.DataFrame, rng: Optional[_RandType] = None):
     """Assuming df is a binary matrix produced by calling
     profile_binr.ProfileBin.binarise() this function should
     randomly resolve all NaN entries to either 1 or 0
 
     This function operates on a deep copy of the df argument
     """
-
+    rng = rng or _GLOBAL_RNG
+    rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
     df = copy.deepcopy(df)
     for gene in df.columns:
         mask = df[gene].isna()
-        df.loc[mask, gene] = np.random.choice((1.0, 0, 0), mask.sum())
+        df.loc[mask, gene] = rng.choice((1.0, 0, 0), mask.sum())
 
     return df
 
@@ -44,7 +47,7 @@ def simulate_unimodal_distribution(
     mean: float,
     std_dev: float,
     size: int,
-    rng: Union[np.random._generator.Generator, int] = _MODULE_RNGS[0],
+    rng: Optional[_RandType] = None,
 ) -> pd.Series:
     """
     Basically a wrapper for scipy.stats.halfnorm
@@ -59,6 +62,7 @@ def simulate_unimodal_distribution(
             * size    : The number of random variates to be sampled from the
                         half normal distribution.
     """
+    rng = rng or _GLOBAL_RNG
     rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
     # random variate right hand side
     _rv_rhs = ss.halfnorm.rvs(loc=mean, scale=std_dev, size=size, random_state=rng)
@@ -71,11 +75,12 @@ def simulate_bimodal_gene(
     binary_gene: pd.Series,
     criterion: pd.Series,
     _verbose: bool = False,
-    rng: Union[np.random._generator.Generator, int] = _MODULE_RNGS[1],
+    rng: Optional[_RandType] = None,
 ) -> pd.Series:
     """
     R
     """
+    rng = rng or _GLOBAL_RNG
     rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
     assert binary_gene.name == criterion.name, "Criterion and gene mismatch"
     # binary_gene = fully_bin.loc[:, _unimod_gene]
@@ -84,6 +89,8 @@ def simulate_bimodal_gene(
         np.nan, index=binary_gene.index, name=criterion.name, dtype=float
     )
     # Create masks
+    # apply is marginally faster, and more idiomatic so
+    # there is no need for :
     # (1 - np.array([True, False, False])).astype(bool)
     one_mask = binary_gene > 0
     zero_mask = one_mask.apply(lambda x: not x)
@@ -130,10 +137,12 @@ def simulate_bimodal_gene(
         # check how many values do we need to put to zero
         _correction_dor = criterion["DropOutRate"] - natural_dor
 
-        # calculate a correction mask (vector of 1 and 0 at random indices, according to the correction DOR)
+        # calculate a correction mask
+        # (vector of 1 and 0 at random indices, according to the correction DOR)
         simulated_normalised_expression *= _dropout_mask(
             dropout_rate=_correction_dor,
             size=len(simulated_normalised_expression),
+            rng=rng,
         )
         corrected_dor = np.isclose(simulated_normalised_expression, 0).mean()
         if _verbose:
@@ -147,11 +156,12 @@ def simulate_unimodal_gene(
     binary_gene: pd.Series,
     criterion: pd.Series,
     _verbose: bool = False,
-    rng: Union[np.random._generator.Generator, int] = _MODULE_RNGS[2],
+    rng: Optional[_RandType] = None,
 ) -> pd.Series:
     """
     R
     """
+    rng = rng or _GLOBAL_RNG
     rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
     assert binary_gene.name == criterion.name, "Criterion and gene mismatch"
     # binary_gene = fully_bin.loc[:, _unimod_gene]
@@ -210,9 +220,12 @@ def simulate_unimodal_gene(
         # check how many values do we need to put to zero
         _correction_dor = criterion["DropOutRate"] - natural_dor
 
-        # calculate a correction mask (vector of 1 and 0 at random indices, according to the correction DOR)
+        # calculate a correction mask (vector of 1 and 0 at random indices,
+        # according to the correction DOR)
         simulated_normalised_expression *= _dropout_mask(
-            dropout_rate=_correction_dor, size=len(simulated_normalised_expression)
+            dropout_rate=_correction_dor,
+            size=len(simulated_normalised_expression),
+            rng=rng,
         )
         corrected_dor = np.isclose(simulated_normalised_expression, 0).mean()
         if _verbose:
@@ -225,7 +238,7 @@ def simulate_unimodal_gene(
 def simulate_gene(
     binary_gene: pd.Series,
     criterion: pd.Series,
-    rng: Union[np.random._generator.Generator, int] = _MODULE_RNGS[3],
+    rng: Optional[_RandType] = None,
 ) -> pd.Series:
     """Simulate the expression of a gene, using the information provided by
     the criteria dataframe of a profile_binr.ProfileBin class.
@@ -242,6 +255,7 @@ def simulate_gene(
     in order to preserve the dropout rate estimated whilst computing the criteria
     for the original expression dataset ?
     """
+    rng = rng or _GLOBAL_RNG
     rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
 
     if criterion["Category"] == "Discarded":
@@ -259,9 +273,10 @@ def simulate_gene(
 def _simulate_subset(
     binary_df: pd.DataFrame,
     simulation_criteria: pd.DataFrame,
-    rng: Union[np.random._generator.Generator, int] = _MODULE_RNGS[4],
+    rng: Optional[_RandType] = None,
 ) -> pd.Series:
     """ helper function, wrapper for apply """
+    rng = rng or _GLOBAL_RNG
     rng = np.random.default_rng(rng) if isinstance(rng, int) else rng
     return binary_df.apply(
         lambda x: simulate_gene(x, simulation_criteria.loc[x.name, :], rng=rng)
@@ -299,10 +314,8 @@ def biased_simulation_from_binary_state(
     _criteria_ls = np.array_split(simulation_criteria, n_threads)
     _binary_ls = np.array_split(binary_df, n_threads, axis=1)
     with mp.Pool(n_threads) as pool:
-        # args = ((_bin, _crit) for _bin, _crit in zip(_binary_ls, _criteria_ls))
         ret_list = pool.starmap(
             _simulate_subset, zip(_binary_ls, _criteria_ls, streams)
         )
 
-    # return _binary_ls, _criteria_ls
     return pd.concat(ret_list, axis=1)

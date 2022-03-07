@@ -53,7 +53,7 @@ def set_module_rng_seed(seed: int) -> np.random.Generator:
     if isinstance(seed, int):
         # import is performed within the function,
         # to prevent an import error due to circular import
-        from ..wrappers.probinr import ProfileBin
+        from .wrappers.probinr import ProfileBin
 
         _probin = ProfileBin(pd.DataFrame())
         _probin.r(f"set.seed({seed})")

@@ -50,7 +50,7 @@ import numpy as np
 import pandas as pd
 
 # local imports
-from ..synthesis.simulation import biased_simulation_from_binary_state
+from ..simulation import biased_simulation_from_binary_state, _RandType
 
 # R source code locations :
 __PROBINR_DIR__ = Path(__file__).resolve().parent.parent.joinpath("_R")
@@ -66,9 +66,12 @@ class ProfileBin(object):
     according to the methodology presented by Beal Jonas et al.
     doi = {10.3389/fphys.2018.01965}.
 
-    Objects of this class should be instantiated by passing a
-    pandas.DataFrame which contains samples as rows and genes
-    as columns.
+    Objects of this class should be instantiated by:
+        * passing a pandas.DataFrame which contains
+          SAMPLES AS ROWS and GENES AS COLUMNS.
+
+        * optionally, an integer `r_seed` to fix the seed
+          of the embedded R instance's random number generator.
 
     Here is an example of the intended usage of this class.
 
@@ -81,7 +84,7 @@ class ProfileBin(object):
         should be the index.
 
     create a ProfileBin instance
-    >>> probin = ProfileBin(exp_data)
+    >>> probin = ProfileBin(exp_data, r_seed=1234)
 
     compute "criteria" used to determine the proper binarization rule
     for each gene in the dataset
@@ -135,11 +138,7 @@ class ProfileBin(object):
         )
         return "\n".join(_err_ls)
 
-    # TODO : add seeding mechanism
-    # https://numpy.org/doc/stable/reference/random/parallel.html
-    # https://numpy.org/doc/stable/reference/random/multithreading.html
-    # https://numpy.org/devdocs/reference/random/index.html
-    def __init__(self, data: pd.DataFrame):
+    def __init__(self, data: pd.DataFrame, r_seed: Optional[int] = None):
         # self._addr will be used to keep track of R objects related to the instance :
         self._addr: str = str(hex(id(self)))
         self.r = r_objs.r
@@ -182,8 +181,15 @@ class ProfileBin(object):
             raise TypeError(
                 f"Parameter 'data' must be of type 'pandas.DataFrame' not {type(data)}"
             )
-        else:
-            self._data: pd.DataFrame = data
+        self._data: pd.DataFrame = data
+
+        # set R rng seed
+        if r_seed is not None:
+            if not isinstance(r_seed, int):
+                raise TypeError(
+                    f"param `r_seed` must be of type int, not {type(r_seed)}"
+                )
+            self.r(f"set.seed({r_seed})")
 
     def __repr__(self):
         return (
@@ -564,18 +570,22 @@ class ProfileBin(object):
         """
         return self._binarize_or_normalize("normalize", data, gene)
 
-    def simulate(self, binary_df, n_threads: Optional[int] = None):
-        """ wrapper for profile_binr.synthesis.simulation.biased_simulation_from_binary_state"""
+    def simulate(
+        self, binary_df, n_threads: Optional[int] = None, seed: Optional[int] = None
+    ):
+        """ wrapper for profile_binr.simulation.biased_simulation_from_binary_state"""
         if not self._can_simulate:
             raise AttributeError("Call .simulation_fit() first")
-        if n_threads:
-            n_threads = min(n_threads, multiprocessing.cpu_count())
-        else:
-            n_threads = multiprocessing.cpu_count()
+        n_threads = (
+            min(abs(n_threads), multiprocessing.cpu_count())
+            if n_threads
+            else multiprocessing.cpu_count()
+        )
         return biased_simulation_from_binary_state(
-            binary_df, self.simulation_criteria, n_threads=n_threads
+            binary_df, self.simulation_criteria, n_threads=n_threads, seed=seed
         )
 
+    # TODO : remove this method
     def plot_zeroinf_diagnostics(
         self,
         df_plot_kwargs: Dict[str, Any] = {

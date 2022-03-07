@@ -15,7 +15,7 @@ import pandas as pd
 from plotnine import ggplot, geom_point, aes, stat_smooth, facet_wrap
 
 from .wrappers.probinr import ProfileBin
-from .synthesis.simulation import random_nan_binariser
+from .simulation import random_nan_binariser
 from .utils.diagnostics import (
     expression_profile_scatterplot,
     compare_profiles,

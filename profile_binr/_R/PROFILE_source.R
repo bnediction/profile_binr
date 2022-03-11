@@ -249,7 +249,7 @@ criteria_iter <- function(columns, data, genes,
 }
 
 compute_criteria <- function(exp_dataset, n_threads,
-                             dor_threshold = 0.95,
+                             dor_threshold = 0.95, # change this to 0.85 ?
                              mask_zero_entries = FALSE,
                              unimodal_margin_quantile = 0.25,
                              descriptor_filename = NULL) {
@@ -389,7 +389,8 @@ binarize_exp <- function(exp_dataset, ref_dataset, ref_criteria, gene) {
     return(gene_bin)
   } else {
 
-    # given the prior subset checks, this condition seems unreachable.  TODO : verify
+    # given the prior subset checks, this condition seems unreachable. 
+    # TODO : verify
     # and remove it
     if (dim(exp_dataset)[2] != dim(ref_criteria)[1]) {
       stop("Different number of genes")

@@ -4,15 +4,100 @@
 """
 
 from typing import Iterator, Dict, Tuple, Union, List, Optional
+from itertools import chain, combinations, product  # For powerset calculation
 from functools import partial
+
+# ^in order to pre-load functions before passing them to
+#  pd.DataFrame.index.map()
+
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import jaccard as jaccard_distance
+
+import networkx as nx
 
 from ..simulation import biased_simulation_from_binary_state
 
 RandomWalkGenerator = Union[Iterator[Dict[str, int]], List[Dict[str, int]]]
 IntListOrTuple = Union[Tuple[int, int], List[int]]
+
+
+def state_to_str(state: Dict[str, int]) -> str:
+    """ Convert a state to a string"""
+    return "".join(str(value) for value in state.values())
+
+
+def graph_node_to_dict(async_dynamics, node: str):
+    """Convert a node of the transition graph to a dictionary.
+    This function takes the transition graph calculated via
+    colomoto.minibn.FullyAsynchronousDynamics.partial_dynamics(initial_state)
+    """
+    return dict(zip(async_dynamics.nodes, map(int, list(node))))
+
+
+def find_terminal_nodes_indexes(digraph: nx.DiGraph):
+    """ Find terminal nodes of a netorkx.DiGraph (directed graph)"""
+    return [i for i in digraph.nodes if len(list(digraph.successors(i))) == 0]
+
+
+def condensation_node_to_dicts(async_dynamics, condensation, node: int):
+    """Return a list with all the condensation nodes formatted
+    as dictionaries."""
+    return [
+        dict(zip(async_dynamics.nodes, w)) for w in condensation.nodes[node]["members"]
+    ]
+
+
+def condensation_node_to_str(node) -> str:
+    """ Convert a netorkx condenstation node to a string """
+    return "".join(w for w in node["members"])
+
+
+def powerset(iterable):
+    """
+    Generate all possible combinations
+    powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)
+    """
+    iter_ls = list(iterable)
+    return chain.from_iterable(
+        combinations(iter_ls, r) for r in range(len(iter_ls) + 1)
+    )
+
+
+def shortest_path_passing_by(graph, start, visit, end) -> List[str]:
+    """Given a graph, a starting node, an end node, compute the
+    shortest paths :
+        (start, visit)
+        (visit, end)
+
+    And merge them as follows :
+    start -> ... -> visit -> ... -> end
+    """
+    format_node = lambda x: x if isinstance(x, str) else state_to_str(x)
+
+    _fist_path = nx.shortest_path(graph, format_node(start), format_node(visit))
+    _second_path = nx.shortest_path(graph, format_node(visit), format_node(end))
+
+    if not _fist_path[-1] == _second_path[0]:
+        raise ValueError(
+            f"`{_fist_path[-1]}` != `{_second_path[0]}`, inconsistent path"
+        )
+
+    _ = _fist_path.pop()
+
+    return _fist_path + _second_path
+
+
+def boolean_df_query_generator(state: Dict[str, int]):
+    """Generate a query to get the dataframe row(s)
+    matching the given boolean state.
+
+    example:
+        >>> state = {"gene1": 1, "gene2": 0}
+        >>> query = boolean_df_query_generator(state)
+        >>> trajectory_df.query(query)
+    """
+    return " and ".join(f"{key} == {value}" for key, value in state.items())
 
 
 def jaccard_similarity(u, v, w=None) -> float:
@@ -25,7 +110,7 @@ def jaccard_similarity(u, v, w=None) -> float:
     return 1.0 - jaccard_distance(u, v, w)
 
 
-def random_walk_to_data_frame(
+def trajectory_to_data_frame(
     random_walk_generator: RandomWalkGenerator,
 ) -> pd.DataFrame:
     """Build and return a DataFrame from a random walk.
@@ -168,6 +253,139 @@ def merge_random_walks(
     )
     if confound_observations:
         _result = _result.set_index(_result.index.map(_partial_index_masker))
+
+    return _result
+
+
+def merge_binary_trajectories(
+    trajectories: List[pd.DataFrame],
+    labels: List[str],
+    branching_point_query: str,
+    attractor_queries: List[str],
+    distinguish_attractors: bool = True,
+    confound_observations: bool = True,
+    df_index_name: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+
+    Merge random walks in order to simulate a multifurcation process.
+
+    Only one branching point is expected to exist,
+    leading to multiple attractors.
+
+    Parameters
+    ----------
+        walk_a : A trajectory ending in a fixed-point attractor.
+        walk_b : Idem, but on a different attractor.
+
+            note : These two should have at least one shared point
+
+
+    TODO : allow params [
+        branching_point_query,
+        attractor_[1,2]_query
+    ] to be either strings or dictionnaries
+    """
+    # Integrity check
+    if not len(trajectories) == len(labels) == len(attractor_queries):
+        _len_err_ls = [
+            "Lengths of entry lists should all be equal.",
+            f"len(trajectories) = {len(trajectories)} !=",
+            f"len(labels) = {len(labels)} !=",
+            f"len(attractor_queries) = {len(attractor_queries)}",
+        ]
+        raise ValueError(" ".join(_len_err_ls))
+
+    # deep-copy our frames to avoid overwritting them
+    _trajectories = [traj.copy(deep=True) for traj in trajectories]
+
+    def trajectory_tagger(idx, branching_point, attractor, attractor_tag):
+        """Tag a bifurcation process.
+        Use a single branching point as reference
+            Tags include:
+                "common" <=> before the branching point
+                "split"  <=> the branching point
+                "branch" <=> states after the branching point and before the attractor
+                "attractor" <=> the attractor
+        """
+        if idx < branching_point:
+            return f"common_{idx}"
+        elif idx == branching_point:
+            return f"split_{idx}"
+        elif idx == attractor:
+            return (
+                f"attractor_{attractor_tag}_{idx}"
+                if distinguish_attractors
+                else f"attractor_{idx}"
+            )
+        elif idx > branching_point:
+            return (
+                f"branch_{attractor_tag}_{idx}"
+                if distinguish_attractors
+                else f"branch_{idx}"
+            )
+        else:
+            raise ValueError(
+                f"Undecidable index {idx}, bp: {branching_point}, attr: {attractor}"
+            )
+
+    trajectory_index_tagger = lambda _traj, _attr_query, _attr_label: _traj.set_index(
+        _traj.index.map(
+            lambda x: trajectory_tagger(
+                idx=x,
+                branching_point=_traj.query(branching_point_query).index[
+                    0
+                ],  # safe, only one branching point
+                attractor=_traj.query(_attr_query).index[
+                    0
+                ],  # safe, only one attractor per trajectory
+                attractor_tag=_attr_label,
+            )
+        )
+    )
+
+    # Tag each of the trajectories indexes, according to the branching point
+    # and their respective attractor queries
+    _trajectories = list(
+        map(trajectory_index_tagger, trajectories, attractor_queries, labels)
+    )
+
+    # f_walk_index_formatter = lambda frame, label: frame.set_index(
+    #    frame.index.astype(str).map(lambda x: f"{label}_{x}")
+    # )
+
+    # _trajectories = list(map(f_walk_index_formatter, _trajectories, labels))
+
+    def index_masker(unique_idx, distinguish_attractors: bool = True):
+        """Confound uniquely labelled samples within a trajectory."""
+        if "common" in unique_idx:
+            return "common"
+        elif "split" in unique_idx:
+            return "split"
+        elif "branch" in unique_idx:
+            return (
+                "_".join(unique_idx.split("_")[:-1])
+                if distinguish_attractors
+                else "branch"
+            )
+        elif "attractor" in unique_idx:
+            return (
+                "_".join(unique_idx.split("_")[:-1])
+                if distinguish_attractors
+                else "attractor"
+            )
+        else:
+            raise ValueError(f"Unknown tag `{unique_idx}` found on index")
+
+    _result = pd.concat(_trajectories, axis="rows")
+
+    _partial_index_masker = partial(
+        index_masker, distinguish_attractors=distinguish_attractors
+    )
+    if confound_observations:
+        _result = _result.set_index(_result.index.map(_partial_index_masker))
+
+    _result.index.name = df_index_name or "label"
 
     return _result
 

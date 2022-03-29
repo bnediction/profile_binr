@@ -12,6 +12,24 @@ from pathlib import (
 )
 import os
 import argparse
+from time import time
+
+
+class Timer(object):
+    """A simple timer class used to measure execution time,
+    without all the problems related to using timeit."""
+
+    def __init__(self, description):
+        self.description = description
+        self.start: float
+        self.end: float
+
+    def __enter__(self):
+        self.start = time()
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.end = time()
+        print(f"{self.description}: {round(self.end - self.start, 5)}")
 
 
 class Path(_Path_):

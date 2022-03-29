@@ -26,6 +26,10 @@
              email : gustavo.magana-lopez@u-psud.fr
 """
 
+# TODO: rename methods :
+#   * binarize -> r_binarize
+#   * py_binarize -> binarize
+
 __all__ = ["ProfileBin"]
 
 from typing import NoReturn, Any, Dict, Optional, Union
@@ -34,6 +38,7 @@ import logging
 
 import random
 import string
+import math
 
 import multiprocessing
 
@@ -149,6 +154,9 @@ class ProfileBin(object):
         self._simulation_criteria: pd.DataFrame
         self._zero_inf_idx: pd.core.indexes.base.Index
         self._zero_inf_df: pd.DataFrame
+        self._unimodal_margin_quantile: float
+        self._dor_threshold: float
+        self._alpha: float
         self._binary_func_by_category = {
             "ZeroInf": self._binarize_unimodal_and_zeroinf,
             "Unimodal": self._binarize_unimodal_and_zeroinf,
@@ -243,10 +251,10 @@ class ProfileBin(object):
     # TODO: verify the function's docstring
     def fit(
         self,
-        n_threads: Optional[int] = multiprocessing.cpu_count(),
-        dor_threshold: Optional[float] = 0.95,
-        mask_zero_entries: Optional[bool] = False,
-        unimodal_margin_quantile: Optional[float] = 0.25,
+        n_threads: int = multiprocessing.cpu_count(),
+        dor_threshold: float = 0.95,
+        mask_zero_entries: bool = False,
+        unimodal_margin_quantile: float = 0.25,
     ) -> "ProfileBin":
         """
         Compute the criteria needed to decide which binarization rule
@@ -259,7 +267,13 @@ class ProfileBin(object):
               logfile : The file in which logs should be saved.
 
         Returns :
-            None
+            self (a reference to the object itself). This is done
+            so that the criteria can be directly accessed, or other
+            methods can be called. Examples :
+            >>> probin = ProfileBin(normalised_expr_data_frame)
+            >>> criteria = probin.fit().criteria
+            Or, for instance:
+            >>> binarized = probin.fit().binarize()
 
         "Side effects" : a pandas.DataFrame containing the criteria and the label
         for each gene will be stored within the class.
@@ -282,6 +296,20 @@ class ProfileBin(object):
         for all genes in the dataset.
 
         """
+        if unimodal_margin_quantile > 0.5:
+            raise ValueError(
+                " ".join(
+                    [
+                        "unimodal_margin_quantile should be smaller than 0.5,"
+                        "otherwise the binarisation rule for unimodal and zero-inflated genes",
+                        "will be undefined (lower_bound > upper_bound)",
+                    ]
+                )
+            )
+        # save the unimodal margin quantile to avoid discrepancies
+        # when recalculating the simulation criteria
+        self._unimodal_margin_quantile = unimodal_margin_quantile
+        self._dor_threshold = dor_threshold
 
         # the data must be instantiated before performing the R call :
         if not self._data_in_r:
@@ -310,10 +338,10 @@ class ProfileBin(object):
 
     def simulation_fit(
         self,
-        n_threads: Optional[int] = multiprocessing.cpu_count(),
-        dor_threshold: Optional[float] = 0.95,
-        mask_zero_entries: Optional[bool] = True,
-        unimodal_margin_quantile: Optional[float] = 0.25,
+        n_threads: int = multiprocessing.cpu_count(),
+        dor_threshold: float = 0.95,
+        mask_zero_entries: bool = True,
+        unimodal_margin_quantile: float = 0.25,
     ) -> "ProfileBin":
         """Re compute criteria for genes classified as zero-inflated,
         in order to better estimate simulation parameters."""
@@ -323,6 +351,26 @@ class ProfileBin(object):
                     [
                         "Cannot compute simulation fit because self.criteria does not exist.",
                         "Call self.fit() before calling this method.",
+                    ]
+                )
+            )
+        if not math.isclose(self._unimodal_margin_quantile, unimodal_margin_quantile):
+            raise ValueError(
+                " ".join(
+                    [
+                        "Specified unimodal margin quantile differs from that specified for binarization",
+                        f"{unimodal_margin_quantile} != {self._unimodal_margin_quantile}",
+                        "The discrepancy between these two will cause inconsistent results",
+                    ]
+                )
+            )
+        if not math.isclose(self._dor_threshold, dor_threshold):
+            raise ValueError(
+                " ".join(
+                    [
+                        "Specified DropOutRate threshold differs from that specified for binarization",
+                        f"{dor_threshold} != {self._dor_threshold}",
+                        "The discrepancy between these two will cause inconsistent results",
                     ]
                 )
             )
@@ -436,8 +484,9 @@ class ProfileBin(object):
     def py_binarize(
         self,
         data: Optional[pd.DataFrame] = None,
-        alpha: Optional[float] = 1.0,
-        n_threads: Optional[int] = None,
+        alpha: float = 1.0,
+        n_threads: int = multiprocessing.cpu_count(),
+        include_discarded: bool = False,
     ):
         """ """
         if not self._is_trained:
@@ -446,8 +495,8 @@ class ProfileBin(object):
             )
 
         data = data or self.data.copy(deep=True)
+        self._alpha = alpha
 
-        n_threads = n_threads or multiprocessing.cpu_count()
         # verify binarised genes are contained in the simulation criteria index
         if not all(gene in self.criteria.index for gene in data.columns):
             raise ValueError(
@@ -471,31 +520,20 @@ class ProfileBin(object):
                 )
             )
 
-        # match the order
-        # simulation_criteria = self.criteria.loc[data.columns, :]
-        # binary_df = pd.DataFrame(np.nan, index=data.index, columns=data.columns)
-
-        # genes_by_category = {
-        #    category: self.criteria[self.criteria.Category == category].index
-        #    for category in self.criteria.Category.unique()
-        # }
-        # self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
-
-        # if "Discarded" in genes_by_category:
-        #    _ = genes_by_category.pop("Discarded")
-
-        # for gene in binary_df.columns:
-        #    binary_df.loc[:, gene] = binary_df.loc[:, gene].apply(
-        #        binary_func_by_category[self.criteria.loc[gene, "Category"]]
-        #    )
-
-        # _criteria_ls = np.array_split(self.criteria, n_threads)
         _binary_ls = np.array_split(data, n_threads, axis=1)
         with multiprocessing.Pool(n_threads) as pool:
-            # args = ((_bin, _crit) for _bin, _crit in zip(_binary_ls, _criteria_ls))
             ret_list = pool.map(self._binarize_subset, _binary_ls)
 
-        return pd.concat(ret_list, axis=1)
+        result = pd.concat(ret_list, axis=1)
+        result = (
+            result
+            if include_discarded
+            else result.loc[
+                :, self.criteria[self.criteria.Category != "Discarded"].index
+            ]
+        )
+
+        return result
 
     def _binarize_discarded(self, gene: pd.Series):
         """ """
@@ -511,13 +549,16 @@ class ProfileBin(object):
         _binary_gene[gene <= bim_thresh_down] = 0.0
         return _binary_gene
 
-    # TODO : add the alpha parameter for the Tukey Fences
     def _binarize_unimodal_and_zeroinf(self, gene: pd.Series):
         """ """
         _binary_gene = pd.Series(np.nan, index=gene.index)
         _criterion = self.criteria.loc[gene.name, :]
-        unim_thresh_up = _criterion["unimodal_high_quantile"] + _criterion["IQR"]
-        unim_thresh_down = _criterion["unimodal_low_quantile"] - _criterion["IQR"]
+        unim_thresh_up = (
+            _criterion["unimodal_high_quantile"] + self._alpha * _criterion["IQR"]
+        )
+        unim_thresh_down = (
+            _criterion["unimodal_low_quantile"] - self._alpha * _criterion["IQR"]
+        )
         _binary_gene[gene > unim_thresh_up] = 1.0
         _binary_gene[gene < unim_thresh_down] = 0.0
         return _binary_gene
@@ -581,24 +622,14 @@ class ProfileBin(object):
             if n_threads
             else multiprocessing.cpu_count()
         )
+        # TODO : change this function call to be
+        # scBoolSeq.dynamics.simulate_from_boolean_trajectory()
         return biased_simulation_from_binary_state(
             binary_df, self.simulation_criteria, n_threads=n_threads, seed=seed
         )
 
-    # TODO : remove this method
-    def plot_zeroinf_diagnostics(
-        self,
-        df_plot_kwargs: Dict[str, Any] = {
-            "kind": "scatter",
-            "x": "DropOutRate",
-            "y": "zero_inf_thresh",
-        },
-    ):
-        """Plot the ZeroInflated threshold as a function of the dropout rate
-        in order to visualise the DropOutRate's value to use as new discarding
-        threshold."""
-        _fig = self.criteria.plot(**df_plot_kwargs)
-        return _fig
+    # removed `def plot_zeroinf_diagnostics()`
+    # last commit having it : 04cdb00b2c26ed1229979d7587559b576bb72ddc
 
     @property
     def data(self) -> pd.DataFrame:
@@ -645,11 +676,11 @@ class ProfileBin(object):
     @criteria.deleter
     def criteria(self):
         raise AttributeError(
-            "Cannot delete 'criteria' as it is necessary to perform the binarization, aborting."
+            "Cannot delete 'criteria' as it is necessary to perform the binarization and simulation, aborting."
         )
 
     def clear_r_envir(self):
         """Remove an all R objects that have been created by the ProfileBin
         instance."""
         _instance_objs = [f"'{obj}'" for obj in self.r_ls() if self._addr in obj]
-        _ = self.r(f"rm(list = c({', '.join(_instance_objs)}))")
+        return self.r(f"rm(list = c({', '.join(_instance_objs)}))")

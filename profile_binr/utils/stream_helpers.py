@@ -3,8 +3,8 @@
     reconstruction.
 """
 
-from typing import Iterator, Dict, Tuple, Union, List, Optional
-from itertools import chain, combinations, product  # For powerset calculation
+from typing import Iterator, Dict, Tuple, Union, List, Optional, Iterable
+from itertools import chain, combinations  # , product  # For powerset calculation
 from functools import partial
 
 # ^in order to pre-load functions before passing them to
@@ -19,7 +19,7 @@ import networkx as nx
 from ..simulation import biased_simulation_from_binary_state
 
 RandomWalkGenerator = Union[Iterator[Dict[str, int]], List[Dict[str, int]]]
-IntListOrTuple = Union[Tuple[int, int], List[int]]
+SampleCountSpec = Union[int, range, Iterable[int]]
 
 
 def state_to_str(state: Dict[str, int]) -> str:
@@ -390,10 +390,11 @@ def merge_binary_trajectories(
     return _result
 
 
+# TODO : move this function to scBoolSeq.dynamics
 def simulate_from_boolean_trajectory(
     boolean_trajectory_df: pd.DataFrame,
     criteria_df: pd.DataFrame,
-    n_samples_per_state: IntListOrTuple = 300,
+    n_samples_per_state: SampleCountSpec = 300,
     rng_seed: Optional[int] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -402,7 +403,16 @@ def simulate_from_boolean_trajectory(
     The biased simulation from the binary state is performed
     according to `criteria_df`.
 
-    Parameter `n_samples_per_state` is 100%
+    Parameter `n_samples_per_state` is of type SampleCountSpec,
+    defined as :
+    >>> SampleCountSpec = Union[int, range, Iterable[int]]
+    The behaviour changes depending on the type.
+    * If an int is given, all states of the boolean trajectory will
+      be sampled `n_samples_per_state` times.
+    * If a range is given, a random number of samples (within the range)
+      will be created for each observation.
+    * If a list is given
+
 
     If specified, parameter `rng_seed` allows 100% reproductible results,
     which means that given the same set of parameters with the given seed
@@ -422,16 +432,29 @@ def simulate_from_boolean_trajectory(
     _simulation_seeds = _rng.integers(
         123, rng_seed, size=len(boolean_trajectory_df.index)
     )
+    _n_states = len(boolean_trajectory_df.index)
 
-    # TODO : discuss range of sample sizes
+    # multiple dispatch for n_samples_per_state
     if isinstance(n_samples_per_state, int):
-        sample_sizes = [n_samples_per_state] * len(boolean_trajectory_df.index)
-    elif isinstance(n_samples_per_state, (list, tuple)):
+        sample_sizes = [n_samples_per_state] * _n_states
+    elif isinstance(n_samples_per_state, range):
         sample_sizes = _rng.integers(
-            n_samples_per_state[0],
-            n_samples_per_state[1],
+            n_samples_per_state.start,
+            n_samples_per_state.stop,
             size=len(boolean_trajectory_df.index),
         )
+    elif isinstance(n_samples_per_state, Iterable):
+        sample_sizes = list(n_samples_per_state)
+        # check we have enough sample sizes for each one of the observed states
+        if not len(sample_sizes) == _n_states:
+            raise ValueError(
+                " ".join(
+                    [
+                        "`n_samples_per_state` should contain",
+                        f"exactly {_n_states} entries, received {len(sample_sizes)}",
+                    ]
+                )
+            )
     else:
         raise TypeError(
             f"Invalid type `{type(n_samples_per_state)}` for parameter n_samples_per_state"

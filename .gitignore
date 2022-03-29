@@ -1,5 +1,18 @@
-# directory created for tinkering :
+# legacy code
+profile_binr/_R/PROFILE_source_sequential.R
+
+# data directories :
+data
+results
+
+# directories created for tinkering and exploration:
 manual_tests
+stray
+local_docs
+profile_binr/synthesis/test_simulation.py
+debug
+first_cli_tests
+parallel_binarisation_timings
 
 # poetry
 pyproject.toml
@@ -7,6 +20,8 @@ poetry.lock
 
 # IDE files :
 **/.vscode
+**/microsoft*
+**/*.deb
 
 # R-related files
 **/.R*

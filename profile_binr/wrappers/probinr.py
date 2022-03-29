@@ -21,19 +21,24 @@
     Rmarkdown notebooks : https://github.com/sysbio-curie/PROFILE
 
     Python wrappers and parallel implementation of the
-    R function compute_criteria() written by Gustavo Magaña López. 
+    R function compute_criteria() written by Gustavo Magaña López.
     GitHub profile : https://github.com/gmagannaDevelop
              email : gustavo.magana-lopez@u-psud.fr
 """
 
+# TODO: rename methods :
+#   * binarize -> r_binarize
+#   * py_binarize -> binarize
+
 __all__ = ["ProfileBin"]
 
-from typing import NoReturn, Any, Callable, List, Dict, Tuple, Optional, Union
+from typing import NoReturn, Any, Dict, Optional, Union
 from pathlib import Path
 import logging
 
 import random
 import string
+import math
 
 import multiprocessing
 
@@ -49,10 +54,13 @@ from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 import numpy as np
 import pandas as pd
 
-# from ..core.probinr import PROBINR_TXT_LITERAL as _PROBINR_TXT_LITERAL
+# local imports
+from ..simulation import biased_simulation_from_binary_state, _RandType
 
-__PROBINR_DIR__ = Path(__file__).parent.absolute().parent.absolute().joinpath("_R")
-__PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").absolute()
+# R source code locations :
+__PROBINR_DIR__ = Path(__file__).resolve().parent.parent.joinpath("_R")
+__PROBINR_SRC__ = __PROBINR_DIR__.joinpath("PROFILE_source.R").resolve()
+__PROBINR_BOOTSTRAP__ = __PROBINR_DIR__.joinpath("install_deps.R").resolve()
 
 rpy2_logger.setLevel(logging.ERROR)  # will display errors, but not warnings
 
@@ -63,9 +71,12 @@ class ProfileBin(object):
     according to the methodology presented by Beal Jonas et al.
     doi = {10.3389/fphys.2018.01965}.
 
-    Objects of this class should be instantiated by passing a
-    pandas.DataFrame which contains samples as rows and genes
-    as columns.
+    Objects of this class should be instantiated by:
+        * passing a pandas.DataFrame which contains
+          SAMPLES AS ROWS and GENES AS COLUMNS.
+
+        * optionally, an integer `r_seed` to fix the seed
+          of the embedded R instance's random number generator.
 
     Here is an example of the intended usage of this class.
 
@@ -78,7 +89,7 @@ class ProfileBin(object):
         should be the index.
 
     create a ProfileBin instance
-    >>> probin = ProfileBin(exp_data)
+    >>> probin = ProfileBin(exp_data, r_seed=1234)
 
     compute "criteria" used to determine the proper binarization rule
     for each gene in the dataset
@@ -115,29 +126,83 @@ class ProfileBin(object):
             random.choice(string.ascii_lowercase + string.digits) for i in range(n)
         )
 
-    def __init__(self, data: pd.DataFrame):
-        # self.__addr will be used to keep track of R objects related to the instance :
-        self.__addr: str = str(hex(id(self)))
+    @staticmethod
+    def _build_r_error_hint(error_str: str) -> str:
+        """Build an auxiliary error string, associated to common causes
+        of RRuntimeErrors."""
+        _err_ls = (
+            "",
+            f"{str(error_str)}\n",
+            "There was an error while calling compute_criteria() in R",
+            "If the error is cryptic (as R errors generally are),"
+            "some likely causes might be:",
+            "\t * insufficient RAM",
+            "\t * the descriptor files might have been deleted or corrupted",
+            "\t * the data.frame contains non-numerical entries",
+            "\t * the data.frame is empty",
+        )
+        return "\n".join(_err_ls)
+
+    def __init__(self, data: pd.DataFrame, r_seed: Optional[int] = None):
+        # self._addr will be used to keep track of R objects related to the instance :
+        self._addr: str = str(hex(id(self)))
         self.r = r_objs.r
         self.r_globalenv = GLOBALENV
-        with open(__PROBINR_SRC__, "r") as f:
-            self.r("".join(f.readlines()))
+        self._valid_categories = ("ZeroInf", "Bimodal", "Discarded", "Unimodal")
+        self._criteria: pd.DataFrame
+        self._zero_inf_criteria: pd.DataFrame
+        self._simulation_criteria: pd.DataFrame
+        self._zero_inf_idx: pd.core.indexes.base.Index
+        self._zero_inf_df: pd.DataFrame
+        self._unimodal_margin_quantile: float
+        self._dor_threshold: float
+        self._alpha: float
+        self._binary_func_by_category = {
+            "ZeroInf": self._binarize_unimodal_and_zeroinf,
+            "Unimodal": self._binarize_unimodal_and_zeroinf,
+            "Bimodal": self._binarize_bimodal,
+            "Discarded": self._binarize_discarded,
+        }
+
+        # try loading all packages and functions, installing them upon failure
+        try:
+            with open(__PROBINR_SRC__, "r") as _probin_source:
+                self.r("".join(_probin_source.readlines()))
+        except RRuntimeError:
+            print("\nERROR : one or more R dependencies are not installed")
+            print("Trying to automatically satisfy missing dependencies\n")
+            try:
+                # install dependencies :
+                with open(__PROBINR_BOOTSTRAP__, "r") as f:
+                    self.r("".join(f.readlines()))
+                print("\n Missing dependencies successfully installed \n")
+                # re-import the R source as functions were not saved because
+                # of the previous RRuntimeError
+                with open(__PROBINR_SRC__, "r") as f:
+                    self.r("".join(f.readlines()))
+            except RRuntimeError as _rer:
+                print("Bootstrapping the installation of R dependencies failed:")
+                raise _rer from None
 
         # sanitise inputs :
         if not isinstance(data, pd.DataFrame):
             raise TypeError(
                 f"Parameter 'data' must be of type 'pandas.DataFrame' not {type(data)}"
             )
-        else:
-            self._data: pd.DataFrame = data
+        self._data: pd.DataFrame = data
+
+        # set R rng seed
+        if r_seed is not None:
+            if not isinstance(r_seed, int):
+                raise TypeError(
+                    f"param `r_seed` must be of type int, not {type(r_seed)}"
+                )
+            self.r(f"set.seed({r_seed})")
 
     def __repr__(self):
-        _lines = [
-            f"PROFILE instance at {self.__addr}",
-            f"with R instance at {self.r.__repr__().split(' ')[-1][:-1]}",
-            f"is_trained : {self._is_trained}",
-        ]
-        return "\n".join(_lines)
+        return (
+            f"ProfileBin(trained={self._is_trained}, can_simulate={self._can_simulate})"
+        )
 
     def r_ls(self):
         """ Return a list containing all the names in the main R environment. """
@@ -145,13 +210,18 @@ class ProfileBin(object):
 
     @property
     def _is_trained(self) -> bool:
-        """ Determine if the criteria has been calculated by inspecting the R environment. """
-        return f"criteria_{self.__addr}" in self.r_ls()
+        """ Boolean indicating if the instance can be used to binarize expression."""
+        return hasattr(self, "_criteria")
+
+    @property
+    def _can_simulate(self) -> bool:
+        """ Boolean indicating if the instance can be used to simulate expression."""
+        return hasattr(self, "_simulation_criteria")
 
     @property
     def _data_in_r(self) -> bool:
         """ Determine if the data to fit the criteria is present in the R environment. """
-        return f"META_RNA_{self.__addr}" in self.r_ls()
+        return f"META_RNA_{self._addr}" in self.r_ls()
 
     def r_instantiate_data(
         self, data: Union[pd.DataFrame, Any], identifier: str
@@ -176,8 +246,16 @@ class ProfileBin(object):
                 sep="\n",
             )
             raise RRuntimeError(str(_rer)) from None
+            # change this to display R's original error ?
 
-    def fit(self, n_threads: Optional[int] = None) -> NoReturn:
+    # TODO: verify the function's docstring
+    def fit(
+        self,
+        n_threads: int = multiprocessing.cpu_count(),
+        dor_threshold: float = 0.95,
+        mask_zero_entries: bool = False,
+        unimodal_margin_quantile: float = 0.25,
+    ) -> "ProfileBin":
         """
         Compute the criteria needed to decide which binarization rule
         will be applied to each gene. This is performed by calling
@@ -189,13 +267,19 @@ class ProfileBin(object):
               logfile : The file in which logs should be saved.
 
         Returns :
-            None
+            self (a reference to the object itself). This is done
+            so that the criteria can be directly accessed, or other
+            methods can be called. Examples :
+            >>> probin = ProfileBin(normalised_expr_data_frame)
+            >>> criteria = probin.fit().criteria
+            Or, for instance:
+            >>> binarized = probin.fit().binarize()
 
         "Side effects" : a pandas.DataFrame containing the criteria and the label
         for each gene will be stored within the class.
 
         It is accessible via :
-        >>> probin_instance.criteria
+        >>> self.criteria
 
         criteria's columns are :
             Dip, BI, Kurtosis, DropOutRate, MeanNZ, DenPeak, Amplitude, Category
@@ -212,37 +296,123 @@ class ProfileBin(object):
         for all genes in the dataset.
 
         """
-        # default to using all available cores
-        n_threads: int = n_threads or multiprocessing.cpu_count()
+        if unimodal_margin_quantile > 0.5:
+            raise ValueError(
+                " ".join(
+                    [
+                        "unimodal_margin_quantile should be smaller than 0.5,"
+                        "otherwise the binarisation rule for unimodal and zero-inflated genes",
+                        "will be undefined (lower_bound > upper_bound)",
+                    ]
+                )
+            )
+        # save the unimodal margin quantile to avoid discrepancies
+        # when recalculating the simulation criteria
+        self._unimodal_margin_quantile = unimodal_margin_quantile
+        self._dor_threshold = dor_threshold
 
         # the data must be instantiated before performing the R call :
         if not self._data_in_r:
-            self.r_instantiate_data(self.data, f"META_RNA_{self.__addr}")
+            self.r_instantiate_data(self.data, f"META_RNA_{self._addr}")
 
         # call compute_criteria only once
         if not self._is_trained:
             params = [
-                f"exp_dataset = META_RNA_{self.__addr}",
+                f"exp_dataset = META_RNA_{self._addr}",
                 f"n_threads = {n_threads}",
+                f"dor_threshold = {dor_threshold}",
+                f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+                f"unimodal_margin_quantile = {unimodal_margin_quantile}",
             ]
             try:
                 with localconverter(r_objs.default_converter + pandas2ri.converter):
-                    self._criteria: pd.DataFrame = r_objs.conversion.rpy2py(
+                    self._criteria = r_objs.conversion.rpy2py(
                         self.r(
-                            f"criteria_{self.__addr} <- compute_criteria({', '.join(params)})"
+                            f"criteria_{self._addr} <- compute_criteria({', '.join(params)})"
                         )
                     )
             except RRuntimeError as _rer:
-                _err_ls = (
-                    "",
-                    str(_rer),
-                    "There was an error while calling compute_criteria() in R",
-                    "Some likely causes are:",
-                    "\t * insufficient RAM",
-                    "\t * the descriptor files might have been deleted or corrupted",
-                    "\t * the data.frame contains non-numerical entries",
+                raise RRuntimeError(self._build_r_error_hint(_rer)) from None
+
+        return self
+
+    def simulation_fit(
+        self,
+        n_threads: int = multiprocessing.cpu_count(),
+        dor_threshold: float = 0.95,
+        mask_zero_entries: bool = True,
+        unimodal_margin_quantile: float = 0.25,
+    ) -> "ProfileBin":
+        """Re compute criteria for genes classified as zero-inflated,
+        in order to better estimate simulation parameters."""
+        if not self._is_trained:
+            raise ValueError(
+                "\n".join(
+                    [
+                        "Cannot compute simulation fit because self.criteria does not exist.",
+                        "Call self.fit() before calling this method.",
+                    ]
                 )
-                raise RRuntimeError("\n".join(_err_ls)) from None
+            )
+        if not math.isclose(self._unimodal_margin_quantile, unimodal_margin_quantile):
+            raise ValueError(
+                " ".join(
+                    [
+                        "Specified unimodal margin quantile differs from that specified for binarization",
+                        f"{unimodal_margin_quantile} != {self._unimodal_margin_quantile}",
+                        "The discrepancy between these two will cause inconsistent results",
+                    ]
+                )
+            )
+        if not math.isclose(self._dor_threshold, dor_threshold):
+            raise ValueError(
+                " ".join(
+                    [
+                        "Specified DropOutRate threshold differs from that specified for binarization",
+                        f"{dor_threshold} != {self._dor_threshold}",
+                        "The discrepancy between these two will cause inconsistent results",
+                    ]
+                )
+            )
+
+        self._zero_inf_idx = self._criteria[self._criteria.Category == "ZeroInf"].index
+        # Perform simulation_fit iff there is at least one Zero-Inflated gene.
+        if len(self._zero_inf_idx) > 0:
+            self._zero_inf_df = self._data.loc[:, self._zero_inf_idx]
+            self.r_instantiate_data(self._zero_inf_df, f"zero_inf_RNA_{self._addr}")
+
+            params = [
+                f"exp_dataset = zero_inf_RNA_{self._addr}",
+                f"n_threads = {n_threads}",
+                f"dor_threshold = {dor_threshold}",
+                f"mask_zero_entries = {self._r_bool(mask_zero_entries)}",
+                f"unimodal_margin_quantile = {unimodal_margin_quantile}",
+            ]
+            try:
+                with localconverter(r_objs.default_converter + pandas2ri.converter):
+                    self._zero_inf_criteria = r_objs.conversion.rpy2py(
+                        self.r(
+                            f"zero_inf_criteria_{self._addr} <- compute_criteria({', '.join(params)})"
+                        )
+                    )
+
+                # force ZeroInf genes to be simulated as Unimodal
+                self._zero_inf_criteria.loc[
+                    self._zero_inf_criteria.Category == "ZeroInf", "Category"
+                ] = "Unimodal"
+                # Copy the originally estimated criteria
+                self._simulation_criteria = self._criteria.copy()
+                # Update the criteria for ZeroInf genes
+                self._simulation_criteria.loc[
+                    self._zero_inf_idx, :
+                ] = self._zero_inf_criteria
+            except RRuntimeError as _rer:
+                raise RRuntimeError(self._build_r_error_hint(_rer)) from None
+        else:
+            # Copy the originally estimated criteria
+            self._simulation_criteria = self._criteria.copy()
+
+        return self
 
     def _binarize_or_normalize(
         self,
@@ -268,17 +438,17 @@ class ProfileBin(object):
         _df_name: str = ""
         _rm_df: bool = False
         if data is not None:
-            _df_name = f"bin_{self.__addr}_{self._random_string()}"
+            _df_name = f"bin_{self._addr}_{self._random_string()}"
             self.r_instantiate_data(data, _df_name)
             _rm_df = True
         else:
-            _df_name = f"META_RNA_{self.__addr}"
+            _df_name = f"META_RNA_{self._addr}"
             data = self.data
 
         params = [
             f"exp_dataset = {_df_name}",
-            f"ref_dataset = META_RNA_{self.__addr}",
-            f"ref_criteria = criteria_{self.__addr}",
+            f"ref_dataset = META_RNA_{self._addr}",
+            f"ref_criteria = criteria_{self._addr}",
         ]
 
         if gene is not None:
@@ -310,6 +480,98 @@ class ProfileBin(object):
         finally:
             if _rm_df:
                 _ = self.r(f"rm({_df_name})")
+
+    def py_binarize(
+        self,
+        data: Optional[pd.DataFrame] = None,
+        alpha: float = 1.0,
+        n_threads: int = multiprocessing.cpu_count(),
+        include_discarded: bool = False,
+    ):
+        """ """
+        if not self._is_trained:
+            raise AttributeError(
+                "Cannot binarize without the criteria DataFrame. Call self.fit() first."
+            )
+
+        data = data or self.data.copy(deep=True)
+        self._alpha = alpha
+
+        # verify binarised genes are contained in the simulation criteria index
+        if not all(gene in self.criteria.index for gene in data.columns):
+            raise ValueError(
+                "'data' contains genes for which there is no simulation criterion."
+            )
+
+        # The following check may be unnecessary as we are using self.criteria,
+        # which by construction can only yield valid criteria.
+        # What if the user tampered with the criteria ?
+        if not all(
+            category in self._valid_categories for category in self.criteria.Category
+        ):
+            raise ValueError(
+                "\n".join(
+                    [
+                        "Corrupted criteria DataFrame,",
+                        f"The set of categories : {self.criteria.Category.unique()}"
+                        "is not a subset of",
+                        f"the set of valid categories : {self._valid_categories}",
+                    ]
+                )
+            )
+
+        _binary_ls = np.array_split(data, n_threads, axis=1)
+        with multiprocessing.Pool(n_threads) as pool:
+            ret_list = pool.map(self._binarize_subset, _binary_ls)
+
+        result = pd.concat(ret_list, axis=1)
+        result = (
+            result
+            if include_discarded
+            else result.loc[
+                :, self.criteria[self.criteria.Category != "Discarded"].index
+            ]
+        )
+
+        return result
+
+    def _binarize_discarded(self, gene: pd.Series):
+        """ """
+        return pd.Series(np.nan, index=gene.index)
+
+    def _binarize_bimodal(self, gene: pd.Series):
+        """ """
+        _binary_gene = pd.Series(np.nan, index=gene.index)
+        _criterion = self.criteria.loc[gene.name, :]
+        bim_thresh_up = _criterion["bim_thresh_up"]
+        bim_thresh_down = _criterion["bim_thresh_down"]
+        _binary_gene[gene >= bim_thresh_up] = 1.0
+        _binary_gene[gene <= bim_thresh_down] = 0.0
+        return _binary_gene
+
+    def _binarize_unimodal_and_zeroinf(self, gene: pd.Series):
+        """ """
+        _binary_gene = pd.Series(np.nan, index=gene.index)
+        _criterion = self.criteria.loc[gene.name, :]
+        unim_thresh_up = (
+            _criterion["unimodal_high_quantile"] + self._alpha * _criterion["IQR"]
+        )
+        unim_thresh_down = (
+            _criterion["unimodal_low_quantile"] - self._alpha * _criterion["IQR"]
+        )
+        _binary_gene[gene > unim_thresh_up] = 1.0
+        _binary_gene[gene < unim_thresh_down] = 0.0
+        return _binary_gene
+
+    def _binarize_gene(self, gene: pd.Series):
+        """ """
+        return self._binary_func_by_category[self.criteria.loc[gene.name, "Category"]](
+            gene
+        )
+
+    def _binarize_subset(self, data: pd.DataFrame):
+        """ """
+        return data.apply(self._binarize_gene)
 
     def binarize(
         self, data: Optional[pd.DataFrame] = None, gene: Optional[str] = None
@@ -349,6 +611,26 @@ class ProfileBin(object):
         """
         return self._binarize_or_normalize("normalize", data, gene)
 
+    def simulate(
+        self, binary_df, n_threads: Optional[int] = None, seed: Optional[int] = None
+    ):
+        """ wrapper for profile_binr.simulation.biased_simulation_from_binary_state"""
+        if not self._can_simulate:
+            raise AttributeError("Call .simulation_fit() first")
+        n_threads = (
+            min(abs(n_threads), multiprocessing.cpu_count())
+            if n_threads
+            else multiprocessing.cpu_count()
+        )
+        # TODO : change this function call to be
+        # scBoolSeq.dynamics.simulate_from_boolean_trajectory()
+        return biased_simulation_from_binary_state(
+            binary_df, self.simulation_criteria, n_threads=n_threads, seed=seed
+        )
+
+    # removed `def plot_zeroinf_diagnostics()`
+    # last commit having it : 04cdb00b2c26ed1229979d7587559b576bb72ddc
+
     @property
     def data(self) -> pd.DataFrame:
         """The expression data used to compute the criteria.
@@ -373,8 +655,32 @@ class ProfileBin(object):
                 "'criteria' has not been calculated. Call self.fit() to define it"
             )
 
+    @property
+    def criteria_zero_inf(self) -> pd.DataFrame:
+        """ Recomputed criteria to simulate zero-inf genes """
+        if hasattr(self, "_zero_inf_criteria"):
+            return self._zero_inf_criteria
+        raise AttributeError(
+            "'criteria_zero_inf' has not been calculated. Call self.simulation_fit() to define it"
+        )
+
+    @property
+    def simulation_criteria(self) -> pd.DataFrame:
+        """ Computed criteria to simulate data """
+        if hasattr(self, "_simulation_criteria"):
+            return self._simulation_criteria
+        raise AttributeError(
+            "'simulation_criteria' has not been calculated. Call self.simulation_fit() to define it"
+        )
+
     @criteria.deleter
     def criteria(self):
         raise AttributeError(
-            "Cannot delete 'criteria' as it is necessary to perform the binarization, aborting."
+            "Cannot delete 'criteria' as it is necessary to perform the binarization and simulation, aborting."
         )
+
+    def clear_r_envir(self):
+        """Remove an all R objects that have been created by the ProfileBin
+        instance."""
+        _instance_objs = [f"'{obj}'" for obj in self.r_ls() if self._addr in obj]
+        return self.r(f"rm(list = c({', '.join(_instance_objs)}))")

@@ -74,3 +74,29 @@ CORE_REGULATION_1 = ObjDict(
         "init_active": ["TF6"],
     }
 )
+
+CORE_REGULATION_2 = ObjDict(
+    {
+        "network": ObjDict(
+            {
+                "G1": "TF1",
+                "G2": "TF1",
+                "G3": "TF1",
+                "G4": "TF2",
+                "G5": "TF2",
+                "G6": "TF2",
+                "G7": "TF6",
+                "G8": "TF6",
+                "G9": "TF6",
+                "TF1": "TF3 & !TF2",
+                "TF2": "TF3 & !TF1",
+                "TF3": "TF4",
+                "TF4": "TF5",
+                "TF5": "!TF6",
+                "TF6": "!TF7",
+                "TF7": 1,
+            }
+        ),
+        "init_active": ["TF6"],
+    }
+)

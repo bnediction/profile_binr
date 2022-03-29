@@ -256,7 +256,7 @@ def random_nan_binariser(binary_df: pd.DataFrame, rng: Optional[_RandType] = Non
     binary_df = binary_df.copy(deep=True)
     for gene in binary_df.columns:
         mask = binary_df[gene].isna()
-        binary_df.loc[mask, gene] = rng.choice((1.0, 0, 0), mask.sum())
+        binary_df.loc[mask, gene] = rng.choice((1.0, 0.0), mask.sum())
 
     return binary_df
 
@@ -511,7 +511,7 @@ def biased_simulation_from_binary_state(
 ) -> pd.DataFrame:
     """n_threads defaults to multiprocessing.cpu_count()"""
 
-    n_threads = min(n_threads, mp.cpu_count()) if n_threads else mp.cpu_count()
+    n_threads = min(abs(n_threads), mp.cpu_count()) if n_threads else mp.cpu_count()
     # verify binarised genes are contained in the simulation criteria index
     if not all(x in simulation_criteria.index for x in binary_df.columns):
         raise ValueError(

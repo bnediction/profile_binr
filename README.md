@@ -1,5 +1,11 @@
 # profile_binr 
 
+## DEPRECATION/MIGRATION WARNING:
+
+This package has been replaced by [scBoolSeq](https://github.com/bnediction/scBoolSeq) which implements the generation of synthetic scRNA-Seq data biased by Boolean activation states as well as rich CLI. If any of your work relies on `profile_binr`, we invite you to migrate to `scBoolSeq` which has retained a similar API but has a richer set of features.
+
+## Legacy README:
+
 ![](https://enktyy605xyf6r8.m.pipedream.net)
 [![Join the chat at https://gitter.im/bnediction/profile_binr](https://badges.gitter.im/bnediction/profile_binr.svg)](https://gitter.im/bnediction/profile_binr?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
